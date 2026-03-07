@@ -1,0 +1,879 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LANstar AICC Console</title>
+    <style>
+      :root {
+        --bg: #f3f0ea;
+        --panel: rgba(255, 252, 246, 0.88);
+        --ink: #1f1a14;
+        --muted: #655a4d;
+        --line: rgba(31, 26, 20, 0.12);
+        --accent: #d26d39;
+        --accent-soft: rgba(210, 109, 57, 0.14);
+        --danger: #b2442f;
+        --ok: #2f6a52;
+        --shadow: 0 18px 40px rgba(62, 42, 26, 0.12);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "IBM Plex Sans KR", "Pretendard", sans-serif;
+        color: var(--ink);
+        background:
+          radial-gradient(circle at top left, rgba(210, 109, 57, 0.18), transparent 28%),
+          radial-gradient(circle at right center, rgba(47, 106, 82, 0.1), transparent 24%),
+          linear-gradient(180deg, #f7f1e8 0%, var(--bg) 100%);
+      }
+
+      .shell {
+        min-height: 100vh;
+        padding: 24px;
+        display: grid;
+        gap: 16px;
+        grid-template-rows: auto auto 1fr;
+      }
+
+      .hero,
+      .toolbar,
+      .panel {
+        backdrop-filter: blur(14px);
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 22px;
+        box-shadow: var(--shadow);
+      }
+
+      .hero {
+        padding: 22px 24px;
+        display: flex;
+        justify-content: space-between;
+        align-items: end;
+        gap: 16px;
+      }
+
+      .title {
+        font-size: 28px;
+        font-weight: 700;
+        letter-spacing: -0.04em;
+      }
+
+      .subtitle {
+        margin-top: 8px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .hero-stats {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      .pill {
+        padding: 10px 14px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.72);
+        border: 1px solid var(--line);
+        font-size: 13px;
+      }
+
+      .toolbar {
+        padding: 16px;
+        display: grid;
+        gap: 12px;
+        grid-template-columns: 1.2fr 1fr 0.8fr 0.6fr auto;
+      }
+
+      .field {
+        display: grid;
+        gap: 6px;
+      }
+
+      .field label {
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      input,
+      select,
+      textarea,
+      button {
+        font: inherit;
+      }
+
+      input,
+      select,
+      textarea {
+        width: 100%;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.82);
+        border-radius: 14px;
+        padding: 11px 12px;
+        color: var(--ink);
+      }
+
+      textarea {
+        min-height: 94px;
+        resize: vertical;
+      }
+
+      button {
+        border: 0;
+        border-radius: 14px;
+        padding: 11px 14px;
+        cursor: pointer;
+        transition: transform 0.14s ease, opacity 0.14s ease;
+      }
+
+      button:hover {
+        transform: translateY(-1px);
+      }
+
+      button.primary {
+        background: var(--ink);
+        color: #fff;
+      }
+
+      button.secondary {
+        background: var(--accent-soft);
+        color: var(--ink);
+      }
+
+      button.danger {
+        background: rgba(178, 68, 47, 0.12);
+        color: var(--danger);
+      }
+
+      .grid {
+        display: grid;
+        gap: 16px;
+        grid-template-columns: 320px 1fr 360px;
+        min-height: 0;
+      }
+
+      .panel {
+        min-height: 0;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .panel-header {
+        padding: 18px 18px 12px;
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .panel-title {
+        font-size: 15px;
+        font-weight: 700;
+      }
+
+      .panel-body {
+        padding: 14px 18px 18px;
+        overflow: auto;
+        display: grid;
+        gap: 12px;
+      }
+
+      .call-card {
+        padding: 14px;
+        border-radius: 18px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.74);
+        display: grid;
+        gap: 8px;
+        cursor: pointer;
+      }
+
+      .call-card.active {
+        border-color: rgba(210, 109, 57, 0.45);
+        background: rgba(210, 109, 57, 0.1);
+      }
+
+      .call-top,
+      .mini-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .badge {
+        border-radius: 999px;
+        padding: 4px 9px;
+        font-size: 11px;
+        background: rgba(31, 26, 20, 0.08);
+        color: var(--muted);
+      }
+
+      .badge.live {
+        background: rgba(47, 106, 82, 0.12);
+        color: var(--ok);
+      }
+
+      .badge.handoff {
+        background: rgba(178, 68, 47, 0.12);
+        color: var(--danger);
+      }
+
+      .metric-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .metric {
+        padding: 12px;
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.72);
+        border: 1px solid var(--line);
+      }
+
+      .metric strong {
+        display: block;
+        font-size: 20px;
+        margin-top: 4px;
+      }
+
+      .transcript-line,
+      .summary-line,
+      .event-line,
+      .draft-line {
+        border-radius: 16px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.76);
+        padding: 12px;
+        display: grid;
+        gap: 6px;
+      }
+
+      .transcript-line.customer {
+        border-left: 4px solid var(--accent);
+      }
+
+      .transcript-line.ai {
+        border-left: 4px solid var(--ok);
+      }
+
+      .transcript-line.manager,
+      .transcript-line.agent {
+        border-left: 4px solid #7d6ae6;
+      }
+
+      .meta {
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .actions {
+        display: grid;
+        gap: 10px;
+      }
+
+      .summary-list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .notification-list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .action-row {
+        display: grid;
+        gap: 8px;
+      }
+
+      .status {
+        font-size: 13px;
+        color: var(--muted);
+      }
+
+      @media (max-width: 1180px) {
+        .toolbar {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <section class="hero">
+        <div>
+          <div class="title">LANstar AICC Admin Console</div>
+          <div class="subtitle">실시간 전화 모니터링, 개입, AI 지시, 주문 추적</div>
+        </div>
+        <div class="hero-stats" id="summaryPills"></div>
+      </section>
+
+      <section class="toolbar">
+        <div class="field">
+          <label>API Base</label>
+          <input id="apiBase" placeholder="https://your-render-service.onrender.com" />
+        </div>
+        <div class="field">
+          <label>Admin Token</label>
+          <input id="adminToken" type="password" placeholder="x-admin-token" />
+        </div>
+        <div class="field">
+          <label>Realtime Token</label>
+          <input id="realtimeToken" type="password" placeholder="ws token" />
+        </div>
+        <div class="field">
+          <label>목록 범위</label>
+          <select id="activeOnly">
+            <option value="true">활성 통화만</option>
+            <option value="false">전체 통화</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>&nbsp;</label>
+          <button class="primary" id="connectBtn">연결</button>
+        </div>
+      </section>
+
+      <section class="grid">
+        <section class="panel">
+          <div class="panel-header">
+            <div class="panel-title">실시간 통화</div>
+            <div class="status" id="wsStatus">WS 대기</div>
+          </div>
+          <div class="panel-body" id="callList"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <div class="panel-title">통화 상세</div>
+            <div class="status" id="selectedCallStatus">선택 없음</div>
+          </div>
+          <div class="panel-body">
+            <div class="metric-grid" id="detailMetrics"></div>
+            <div class="panel-title">전사</div>
+            <div id="transcriptList"></div>
+            <div class="panel-title">이벤트</div>
+            <div id="eventList"></div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <div class="panel-title">개입 / 초안</div>
+            <div class="status" id="detailIntent">-</div>
+          </div>
+          <div class="panel-body">
+            <div class="mini-row">
+              <div class="panel-title">자동 요약</div>
+              <button class="secondary" id="refreshSummaryBtn">요약 재생성</button>
+            </div>
+            <div id="summaryBox" class="summary-list"></div>
+            <div class="mini-row">
+              <div class="panel-title">후속안내 채널</div>
+              <select id="notificationChannel">
+                <option value="sms">SMS</option>
+                <option value="alimtalk">알림톡</option>
+                <option value="email">이메일</option>
+              </select>
+            </div>
+            <div id="draftList"></div>
+            <div class="panel-title">발송 이력</div>
+            <div id="notificationList" class="notification-list"></div>
+            <div class="actions">
+              <div class="action-row">
+                <label class="meta">내부 메모</label>
+                <textarea id="noteInput" placeholder="상담원에게 내부메모 전달"></textarea>
+                <button class="secondary" id="sendNoteBtn">메모 저장</button>
+              </div>
+              <div class="action-row">
+                <label class="meta">AI 지시</label>
+                <textarea id="aiInstructionInput" placeholder="다음 답변 방향을 AI에게 지시"></textarea>
+                <button class="secondary" id="sendAiInstructionBtn">AI 지시 전달</button>
+              </div>
+              <div class="action-row">
+                <label class="meta">즉시 인계</label>
+                <select id="takeoverTarget">
+                  <option value="sales">영업</option>
+                  <option value="tech">기술</option>
+                </select>
+                <textarea id="takeoverReason" placeholder="인계 사유"></textarea>
+                <button class="danger" id="takeoverBtn">Takeover</button>
+              </div>
+            </div>
+          </div>
+        </section>
+      </section>
+    </div>
+
+    <script>
+      const state = {
+        apiBase: localStorage.getItem("aicc_api_base") || window.location.origin,
+        adminToken: localStorage.getItem("aicc_admin_token") || "",
+        realtimeToken: localStorage.getItem("aicc_realtime_token") || "",
+        activeOnly: localStorage.getItem("aicc_active_only") || "true",
+        selectedCallId: null,
+        ws: null,
+        calls: [],
+        details: new Map()
+      };
+
+      const el = {
+        apiBase: document.getElementById("apiBase"),
+        adminToken: document.getElementById("adminToken"),
+        realtimeToken: document.getElementById("realtimeToken"),
+        activeOnly: document.getElementById("activeOnly"),
+        connectBtn: document.getElementById("connectBtn"),
+        callList: document.getElementById("callList"),
+        detailMetrics: document.getElementById("detailMetrics"),
+        transcriptList: document.getElementById("transcriptList"),
+        eventList: document.getElementById("eventList"),
+        draftList: document.getElementById("draftList"),
+        notificationList: document.getElementById("notificationList"),
+        notificationChannel: document.getElementById("notificationChannel"),
+        summaryBox: document.getElementById("summaryBox"),
+        summaryPills: document.getElementById("summaryPills"),
+        wsStatus: document.getElementById("wsStatus"),
+        selectedCallStatus: document.getElementById("selectedCallStatus"),
+        detailIntent: document.getElementById("detailIntent"),
+        noteInput: document.getElementById("noteInput"),
+        aiInstructionInput: document.getElementById("aiInstructionInput"),
+        takeoverTarget: document.getElementById("takeoverTarget"),
+        takeoverReason: document.getElementById("takeoverReason"),
+        sendNoteBtn: document.getElementById("sendNoteBtn"),
+        sendAiInstructionBtn: document.getElementById("sendAiInstructionBtn"),
+        takeoverBtn: document.getElementById("takeoverBtn"),
+        refreshSummaryBtn: document.getElementById("refreshSummaryBtn")
+      };
+
+      init();
+
+      function init() {
+        el.apiBase.value = state.apiBase;
+        el.adminToken.value = state.adminToken;
+        el.realtimeToken.value = state.realtimeToken;
+        el.activeOnly.value = state.activeOnly;
+        bindEvents();
+        connect();
+      }
+
+      function bindEvents() {
+        el.connectBtn.addEventListener("click", connect);
+        el.sendNoteBtn.addEventListener("click", () => sendCommand("note"));
+        el.sendAiInstructionBtn.addEventListener("click", () => sendCommand("ai"));
+        el.takeoverBtn.addEventListener("click", () => sendCommand("takeover"));
+        el.refreshSummaryBtn.addEventListener("click", () => sendCommand("summary"));
+        el.draftList.addEventListener("click", handleDraftListClick);
+        el.notificationList.addEventListener("click", handleNotificationListClick);
+      }
+
+      async function connect() {
+        state.apiBase = el.apiBase.value.trim().replace(/\/$/, "") || window.location.origin;
+        state.adminToken = el.adminToken.value.trim();
+        state.realtimeToken = el.realtimeToken.value.trim();
+        state.activeOnly = el.activeOnly.value;
+
+        localStorage.setItem("aicc_api_base", state.apiBase);
+        localStorage.setItem("aicc_admin_token", state.adminToken);
+        localStorage.setItem("aicc_realtime_token", state.realtimeToken);
+        localStorage.setItem("aicc_active_only", state.activeOnly);
+
+        await Promise.all([loadSummary(), loadCalls()]);
+        connectWs();
+      }
+
+      async function api(path, options = {}) {
+        const headers = new Headers(options.headers || {});
+        headers.set("content-type", "application/json");
+
+        if (state.adminToken) {
+          headers.set("x-admin-token", state.adminToken);
+        }
+
+        const res = await fetch(`${state.apiBase}${path}`, {
+          ...options,
+          headers
+        });
+
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(text || `Request failed: ${res.status}`);
+        }
+
+        if (res.status === 204) {
+          return null;
+        }
+
+        return res.json();
+      }
+
+      async function loadSummary() {
+        const data = await api("/api/v1/admin/summary");
+        el.summaryPills.innerHTML = "";
+        const livePill = document.createElement("div");
+        livePill.className = "pill";
+        livePill.textContent = `실시간 ${data.liveRuntimeCount}건`;
+        el.summaryPills.appendChild(livePill);
+
+        for (const item of data.byStatus) {
+          const pill = document.createElement("div");
+          pill.className = "pill";
+          pill.textContent = `${item.status}: ${item.count}`;
+          el.summaryPills.appendChild(pill);
+        }
+      }
+
+      async function loadCalls() {
+        const data = await api(`/api/v1/admin/calls?activeOnly=${state.activeOnly}&limit=30`);
+        state.calls = data.items;
+        renderCalls();
+
+        if (!state.selectedCallId && state.calls[0]) {
+          await selectCall(state.calls[0].id);
+        } else if (state.selectedCallId) {
+          await selectCall(state.selectedCallId);
+        }
+      }
+
+      async function selectCall(callId) {
+        state.selectedCallId = callId;
+        renderCalls();
+
+        const detail = await api(`/api/v1/admin/calls/${callId}`);
+        state.details.set(callId, detail);
+        renderDetail(detail);
+      }
+
+      function renderCalls() {
+        el.callList.innerHTML = "";
+
+        for (const call of state.calls) {
+          const card = document.createElement("div");
+          card.className = `call-card${call.id === state.selectedCallId ? " active" : ""}`;
+          card.innerHTML = `
+            <div class="call-top">
+              <strong>${escapeHtml(call.customer?.customerName || call.callerNumber)}</strong>
+              <span class="badge ${call.status === "live" ? "live" : call.status === "handoff" ? "handoff" : ""}">
+                ${escapeHtml(call.status)}
+              </span>
+            </div>
+            <div class="meta">${escapeHtml(call.callerNumber)}</div>
+            <div class="mini-row">
+              <span class="badge">${escapeHtml(call.intentType || "other")}</span>
+              <span class="meta">${formatTime(call.answeredAt || call.startedAt)}</span>
+            </div>
+            <div class="mini-row">
+              <span class="meta">bridge: ${call.bridgeActive ? "on" : "off"}</span>
+              <span class="meta">runtime: ${call.runtime ? "on" : "off"}</span>
+            </div>
+            <div class="mini-row">
+              <span class="meta">${call.handoffRequired ? `이관대기: ${escapeHtml(call.handoffTarget)}` : "이관없음"}</span>
+              <span class="meta">${escapeHtml(call.handoffReason || "")}</span>
+            </div>
+          `;
+          card.addEventListener("click", () => selectCall(call.id));
+          el.callList.appendChild(card);
+        }
+      }
+
+      function renderDetail(detail) {
+        el.selectedCallStatus.textContent = `${detail.status} / ${detail.callerNumber}`;
+        el.detailIntent.textContent = detail.intentType || "-";
+
+        el.detailMetrics.innerHTML = "";
+        const metrics = [
+          ["거래처", detail.customer?.customerName || "-"],
+          ["의도", detail.intentType || "-"],
+          ["Bridge", detail.bridgeActive ? "연결됨" : "없음"],
+          ["Handoff", detail.handoffRequired ? detail.handoffTarget : "none"]
+        ];
+
+        for (const [label, value] of metrics) {
+          const box = document.createElement("div");
+          box.className = "metric";
+          box.innerHTML = `<div class="meta">${escapeHtml(label)}</div><strong>${escapeHtml(value)}</strong>`;
+          el.detailMetrics.appendChild(box);
+        }
+
+        renderSummary(detail.summary);
+
+        const transcriptLines = [
+          ...(detail.runtime?.transcriptPreview || []),
+          ...detail.events
+            .filter((event) => ["asr", "ai_reply", "human_note", "handoff"].includes(event.event_type))
+            .slice(-30)
+            .map((event) => ({
+              speaker: event.speaker,
+              text: event.content || "",
+              createdAt: event.created_at
+            }))
+        ];
+
+        const uniqTranscript = dedupeTranscript(transcriptLines);
+        el.transcriptList.innerHTML = uniqTranscript
+          .map(
+            (line) => `
+              <div class="transcript-line ${escapeHtml(line.speaker)}">
+                <div class="mini-row">
+                  <strong>${escapeHtml(line.speaker)}</strong>
+                  <span class="meta">${formatTime(line.createdAt)}</span>
+                </div>
+                <div>${escapeHtml(line.text)}</div>
+              </div>
+            `
+          )
+          .join("");
+
+        el.eventList.innerHTML = detail.events
+          .slice(-20)
+          .map(
+            (event) => `
+              <div class="event-line">
+                <div class="mini-row">
+                  <strong>${escapeHtml(event.event_type)}</strong>
+                  <span class="meta">${formatTime(event.created_at)}</span>
+                </div>
+                <div class="meta">${escapeHtml(event.speaker)}</div>
+                <div>${escapeHtml(event.content || "")}</div>
+              </div>
+            `
+          )
+          .join("");
+
+        el.draftList.innerHTML = detail.drafts.length
+          ? detail.drafts
+              .map(
+                (draft) => `
+                  <div class="draft-line">
+                    <div class="mini-row">
+                      <strong>${escapeHtml(draft.draft_kind)}</strong>
+                      <span class="badge">${escapeHtml(draft.status)}</span>
+                    </div>
+                    <div class="meta">창고 ${escapeHtml(draft.warehouse_code)} / ${escapeHtml(draft.shipping_method || "-")}</div>
+                    <div class="meta">합계 ${draft.total_amount ? Number(draft.total_amount).toLocaleString("ko-KR") + "원" : "-"}</div>
+                    <div>${escapeHtml(draft.human_review_reason || "")}</div>
+                    <button class="secondary" data-action="send-draft-notification" data-draft-id="${escapeHtml(draft.id)}">후속안내 발송</button>
+                  </div>
+                `
+              )
+              .join("")
+          : `<div class="meta">연결된 주문/견적 초안이 없습니다.</div>`;
+
+        el.notificationList.innerHTML = detail.notifications && detail.notifications.length
+          ? detail.notifications
+              .map(
+                (item) => `
+                  <div class="draft-line">
+                    <div class="mini-row">
+                      <strong>${escapeHtml(item.channel)}</strong>
+                      <span class="badge">${escapeHtml(item.status)}</span>
+                    </div>
+                    <div class="meta">${escapeHtml(item.recipient)}</div>
+                    <div class="meta">${escapeHtml(item.subject || "")}</div>
+                    <div class="meta">${formatTime(item.created_at)}</div>
+                    <button class="secondary" data-action="resend-notification" data-notification-id="${escapeHtml(item.id)}">재발송</button>
+                  </div>
+                `
+              )
+              .join("")
+          : `<div class="meta">발송 이력이 없습니다.</div>`;
+      }
+
+      function renderSummary(summary) {
+        if (!summary) {
+          el.summaryBox.innerHTML = `<div class="meta">생성된 요약이 없습니다.</div>`;
+          return;
+        }
+
+        const products = Array.isArray(summary.products) ? summary.products : [];
+        const keyPoints = Array.isArray(summary.keyPoints) ? summary.keyPoints : [];
+        const actionItems = Array.isArray(summary.actionItems) ? summary.actionItems : [];
+        const riskFlags = Array.isArray(summary.riskFlags) ? summary.riskFlags : [];
+
+        el.summaryBox.innerHTML = `
+          <div class="summary-line">
+            <div class="mini-row">
+              <strong>${escapeHtml(summary.inquiryType || "-")}</strong>
+              <span class="badge">${escapeHtml(summary.source || "-")}</span>
+            </div>
+            <div>${escapeHtml(summary.summaryText || "-")}</div>
+            <div class="meta">감정: ${escapeHtml(summary.sentiment || "-")} / 후속조치: ${summary.humanFollowupNeeded ? "필요" : "없음"}</div>
+          </div>
+          <div class="summary-line">
+            <strong>핵심 포인트</strong>
+            ${keyPoints.length ? keyPoints.map((item) => `<div class="meta">- ${escapeHtml(item)}</div>`).join("") : `<div class="meta">없음</div>`}
+          </div>
+          <div class="summary-line">
+            <strong>후속조치</strong>
+            ${actionItems.length ? actionItems.map((item) => `<div class="meta">- ${escapeHtml(item)}</div>`).join("") : `<div class="meta">없음</div>`}
+          </div>
+          <div class="summary-line">
+            <strong>품목</strong>
+            ${products.length ? products.map((item) => `<div class="meta">- ${escapeHtml(item.productName)}${item.qty != null ? ` / ${escapeHtml(item.qty)}` : ""}${item.shippingMethod ? ` / ${escapeHtml(item.shippingMethod)}` : ""}</div>`).join("") : `<div class="meta">없음</div>`}
+          </div>
+          <div class="summary-line">
+            <strong>리스크</strong>
+            ${riskFlags.length ? riskFlags.map((item) => `<div class="meta">- ${escapeHtml(item)}</div>`).join("") : `<div class="meta">없음</div>`}
+          </div>
+        `;
+      }
+
+      function connectWs() {
+        if (state.ws) {
+          state.ws.close();
+        }
+
+        const base = state.apiBase.replace(/^http/i, "ws");
+        const url = new URL("/api/v1/realtime/ws/monitor", base);
+        url.searchParams.set("role", "monitor");
+        if (state.realtimeToken) {
+          url.searchParams.set("token", state.realtimeToken);
+        }
+
+        state.ws = new WebSocket(url);
+        el.wsStatus.textContent = "WS 연결중";
+
+        state.ws.onopen = () => {
+          el.wsStatus.textContent = "WS 연결됨";
+        };
+
+        state.ws.onclose = () => {
+          el.wsStatus.textContent = "WS 종료";
+        };
+
+        state.ws.onerror = () => {
+          el.wsStatus.textContent = "WS 오류";
+        };
+
+        state.ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            handleWsEvent(data);
+          } catch {
+            console.error("invalid ws payload");
+          }
+        };
+      }
+
+      function handleWsEvent(data) {
+        if (data.callSessionId && state.selectedCallId === data.callSessionId) {
+          selectCall(state.selectedCallId);
+        }
+
+        if (["session.started", "session.completed", "analysis", "manager.command", "twilio.started", "twilio.stopped"].includes(data.type)) {
+          loadCalls();
+          loadSummary();
+        }
+      }
+
+      async function sendCommand(kind) {
+        if (!state.selectedCallId) {
+          alert("통화를 먼저 선택하세요.");
+          return;
+        }
+
+        if (kind === "note") {
+          await api(`/api/v1/admin/calls/${state.selectedCallId}/notes`, {
+            method: "POST",
+            body: JSON.stringify({ content: el.noteInput.value.trim() })
+          });
+          el.noteInput.value = "";
+        }
+
+        if (kind === "ai") {
+          await api(`/api/v1/admin/calls/${state.selectedCallId}/ai-instructions`, {
+            method: "POST",
+            body: JSON.stringify({ instruction: el.aiInstructionInput.value.trim() })
+          });
+          el.aiInstructionInput.value = "";
+        }
+
+        if (kind === "takeover") {
+          await api(`/api/v1/admin/calls/${state.selectedCallId}/takeover`, {
+            method: "POST",
+            body: JSON.stringify({
+              target: el.takeoverTarget.value,
+              reason: el.takeoverReason.value.trim()
+            })
+          });
+          el.takeoverReason.value = "";
+        }
+
+        if (kind === "summary") {
+          await api(`/api/v1/admin/calls/${state.selectedCallId}/summarize`, {
+            method: "POST"
+          });
+        }
+
+        await selectCall(state.selectedCallId);
+      }
+
+      async function handleDraftListClick(event) {
+        const target = event.target.closest("[data-action='send-draft-notification']");
+
+        if (!target || !state.selectedCallId) {
+          return;
+        }
+
+        await api(`/api/v1/admin/calls/${state.selectedCallId}/drafts/${target.dataset.draftId}/notify`, {
+          method: "POST",
+          body: JSON.stringify({
+            channel: el.notificationChannel.value
+          })
+        });
+
+        await selectCall(state.selectedCallId);
+      }
+
+      async function handleNotificationListClick(event) {
+        const target = event.target.closest("[data-action='resend-notification']");
+
+        if (!target || !state.selectedCallId) {
+          return;
+        }
+
+        await api(`/api/v1/admin/calls/${state.selectedCallId}/notifications/${target.dataset.notificationId}/send`, {
+          method: "POST"
+        });
+
+        await selectCall(state.selectedCallId);
+      }
+
+      function dedupeTranscript(lines) {
+        const seen = new Set();
+        return lines.filter((line) => {
+          const key = `${line.speaker}:${line.createdAt}:${line.text}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+      }
+
+      function formatTime(value) {
+        if (!value) return "-";
+        const date = new Date(value);
+        return date.toLocaleString("ko-KR", { hour12: false });
+      }
+
+      function escapeHtml(value) {
+        return String(value ?? "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+    </script>
+  </body>
+</html>

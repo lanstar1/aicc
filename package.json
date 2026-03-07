@@ -1,0 +1,41 @@
+{
+  "name": "lanstar-aicc-api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "LANstar AICC backend API skeleton",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "typecheck": "tsc --noEmit",
+    "import:data": "tsx src/scripts/import-data.ts",
+    "db:apply-schema": "tsx src/scripts/apply-schema.ts",
+    "smoke:test": "tsx src/scripts/smoke-test.ts",
+    "purge:retention": "tsx src/scripts/purge-retention.ts",
+    "simulate:call": "tsx src/scripts/simulate-call.ts"
+  },
+  "dependencies": {
+    "@fastify/cors": "^10.0.2",
+    "@fastify/formbody": "^8.0.2",
+    "@fastify/websocket": "^11.0.2",
+    "dotenv": "^16.4.7",
+    "fastify": "^5.2.1",
+    "fastify-plugin": "^5.0.1",
+    "nodemailer": "^6.10.0",
+    "pg": "^8.13.3",
+    "ws": "^8.18.0",
+    "xlsx": "^0.18.5",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.8",
+    "@types/nodemailer": "^7.0.11",
+    "@types/pg": "^8.11.11",
+    "@types/ws": "^8.18.1",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2"
+  }
+}

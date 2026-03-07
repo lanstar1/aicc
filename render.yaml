@@ -1,0 +1,104 @@
+databases:
+  - name: lanstar-aicc-db
+    databaseName: lanstar_aicc
+    user: lanstar_aicc
+    plan: basic-256mb
+    ipAllowList: []
+
+services:
+  - type: web
+    name: lanstar-aicc-api
+    runtime: node
+    plan: starter
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /ready
+    autoDeploy: false
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "10000"
+      - key: DATABASE_SSL
+        value: "true"
+      - key: AUTO_ORDER_NOTIFICATION_ENABLED
+        value: "false"
+      - key: AUTO_ORDER_NOTIFICATION_CHANNEL
+        value: sms
+      - key: NOTIFICATION_MOCK_MODE
+        value: "false"
+      - key: PUBLIC_BASE_URL
+        sync: false
+      - key: DATABASE_URL
+        fromDatabase:
+          name: lanstar-aicc-db
+          property: connectionString
+      - key: ADMIN_API_TOKEN
+        sync: false
+      - key: REALTIME_WS_TOKEN
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_REALTIME_MODEL
+        value: gpt-realtime
+      - key: OPENAI_REALTIME_VOICE
+        value: cedar
+      - key: OPENAI_REALTIME_TRANSCRIBE_MODEL
+        value: gpt-4o-transcribe
+      - key: OPENAI_REALTIME_LANGUAGE
+        value: ko
+      - key: TWILIO_STREAM_TOKEN
+        sync: false
+      - key: ERP_BASE_URL
+        value: https://oapi.ecount.com
+      - key: ERP_COM_CODE
+        sync: false
+      - key: ERP_USER_ID
+        sync: false
+      - key: ERP_API_CERT_KEY
+        sync: false
+      - key: ERP_LAN_TYPE
+        value: ko-KR
+      - key: ERP_SESSION_TTL_SECONDS
+        value: "480"
+      - key: ERP_EMP_CD
+        value: "01"
+      - key: EMAIL_FROM_NAME
+        value: LANstar
+      - key: EMAIL_FROM_ADDRESS
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_SECURE
+        value: "false"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: ERP_SMS_WEBHOOK_URL
+        sync: false
+      - key: ERP_SMS_WEBHOOK_TOKEN
+        sync: false
+      - key: ALIMTALK_WEBHOOK_URL
+        sync: false
+      - key: ALIMTALK_WEBHOOK_TOKEN
+        sync: false
+
+  - type: cron
+    name: lanstar-aicc-retention
+    runtime: node
+    plan: starter
+    schedule: "0 18 * * *"
+    buildCommand: npm ci && npm run build
+    startCommand: npm run purge:retention
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_SSL
+        value: "true"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: lanstar-aicc-db
+          property: connectionString
