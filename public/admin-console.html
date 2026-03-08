@@ -322,6 +322,12 @@
         gap: 10px;
       }
 
+      .quality-grid {
+        display: grid;
+        gap: 10px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
       .notification-list {
         display: grid;
         gap: 10px;
@@ -422,6 +428,8 @@
           </div>
           <div class="panel-body">
             <div class="metric-grid" id="detailMetrics"></div>
+            <div class="panel-title">운영 품질</div>
+            <div id="qualityBox" class="quality-grid"></div>
             <div class="panel-title">전사</div>
             <div id="transcriptList"></div>
             <div class="panel-title">이벤트</div>
@@ -497,6 +505,7 @@
         connectBtn: document.getElementById("connectBtn"),
         callList: document.getElementById("callList"),
         detailMetrics: document.getElementById("detailMetrics"),
+        qualityBox: document.getElementById("qualityBox"),
         transcriptList: document.getElementById("transcriptList"),
         eventList: document.getElementById("eventList"),
         draftList: document.getElementById("draftList"),
@@ -737,6 +746,7 @@
           el.detailMetrics.appendChild(box);
         }
 
+        renderQuality(detail);
         renderSummary(detail.summary);
 
         const transcriptLines = [
@@ -821,6 +831,35 @@
           : `<div class="meta">발송 이력이 없습니다.</div>`;
       }
 
+      function renderQuality(detail) {
+        const statePatch = detail.runtime?.state || {};
+        const latestAnalysis = [...detail.events]
+          .reverse()
+          .find((event) => event.event_type === "system" && event.content === "turn_analysis");
+        const metadata = latestAnalysis?.metadata || {};
+        const fields = [
+          ["거래처 캡처", describeResolution("customer", statePatch.customerResolutionMode, statePatch.customerCandidateCount)],
+          ["품목 캡처", describeResolution("product", statePatch.productResolutionMode, statePatch.productCandidateCount)],
+          ["현재 단계", formatStage(statePatch.conversationStage)],
+          ["복구 횟수", String(statePatch.repairCount ?? 0)],
+          ["거래처 힌트", statePatch.lastCustomerNameHint || "-"],
+          ["품목 힌트", statePatch.lastProductQuery || "-"],
+          ["다음 액션", formatNextAction(metadata.nextAction)],
+          ["권장 진행", buildCoachHint(statePatch, metadata)]
+        ];
+
+        el.qualityBox.innerHTML = fields
+          .map(
+            ([label, value]) => `
+              <div class="summary-line">
+                <div class="meta">${escapeHtml(label)}</div>
+                <strong>${escapeHtml(value)}</strong>
+              </div>
+            `
+          )
+          .join("");
+      }
+
       function renderSummary(summary) {
         if (!summary) {
           el.summaryBox.innerHTML = `<div class="meta">생성된 요약이 없습니다.</div>`;
@@ -858,6 +897,89 @@
             ${riskFlags.length ? riskFlags.map((item) => `<div class="meta">- ${escapeHtml(item)}</div>`).join("") : `<div class="meta">없음</div>`}
           </div>
         `;
+      }
+
+      function describeResolution(kind, mode, count) {
+        const labels = {
+          selected: "직접 선택됨",
+          phone_exact: "전화번호 정확 매칭",
+          name_exact: "거래처명 정확 매칭",
+          phone_name_fuzzy: "전화번호+이름 후보 매칭",
+          item_exact: "품목코드 정확 매칭",
+          model_exact: "모델명 정확 매칭",
+          compact_exact: "붙여쓴 모델명 정확 매칭",
+          candidate_only: "후보 확인 필요",
+          unresolved: "미확정"
+        };
+        const base = labels[mode] || "미확정";
+
+        if (kind === "customer" || kind === "product") {
+          return count ? `${base} / 후보 ${count}개` : base;
+        }
+
+        return base;
+      }
+
+      function formatStage(stage) {
+        const labels = {
+          opening: "오프닝",
+          customer: "거래처 확인",
+          product: "품목 확인",
+          quantity: "수량 확인",
+          delivery: "배송 방식 확인",
+          confirmation: "최종 복창",
+          inventory: "재고 안내",
+          quote: "견적 안내",
+          tech: "기술 안내",
+          handoff: "사람 이관",
+          resolved: "처리 완료"
+        };
+
+        return labels[stage] || "-";
+      }
+
+      function formatNextAction(action) {
+        const labels = {
+          confirm_customer: "거래처 재확인",
+          ask_brand_or_product: "브랜드/품명 추가 수집",
+          clarify_product: "품목 후보 재확인",
+          ask_quantity: "수량 질문",
+          ask_delivery: "배송 방식 질문",
+          confirm_order: "최종 주문 확인",
+          save_order: "주문 저장",
+          save_quote: "견적 저장",
+          check_inventory: "재고 확인",
+          provide_quote: "견적 안내",
+          provide_tech_guidance: "기술 답변",
+          clarify_intent: "의도 재확인",
+          human_handoff: "사람 이관"
+        };
+
+        return labels[action] || "-";
+      }
+
+      function buildCoachHint(statePatch, metadata) {
+        if (metadata.nextAction === "confirm_customer") {
+          return "거래처명만 다시 확인하고, 필요하면 전화번호 뒷자리 네 자리만 추가로 받으세요.";
+        }
+
+        if (metadata.nextAction === "clarify_product") {
+          return "모델명이나 품목코드를 먼저 다시 받고, 어렵다면 제조사-품명-규격 순으로 한 항목씩 받으세요.";
+        }
+
+        if (metadata.nextAction === "ask_quantity") {
+          return "수량만 다시 물으세요. 다른 정보는 함께 묻지 마세요.";
+        }
+
+        if (metadata.nextAction === "ask_delivery") {
+          return "배송 방식만 확인하세요. 배송, 방문수령, 택배, 퀵 중 하나로 받으세요.";
+        }
+
+        if ((statePatch.repairCount ?? 0) >= 2) {
+          return "복구 루프가 길어졌습니다. 사람 개입 또는 직접 통화 전환을 검토하세요.";
+        }
+
+        return "현재 단계 기준으로 한 가지 정보만 더 확인하면 됩니다.";
       }
 
       function connectWs() {

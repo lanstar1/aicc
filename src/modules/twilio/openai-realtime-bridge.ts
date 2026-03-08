@@ -12,10 +12,9 @@ import {
 } from '../orchestrator/service';
 import { buildApprovedTurnInstructions, resolveTurnResponse } from '../orchestrator/turn-runtime';
 import { finalizeCallSession } from '../calls/finalize-service';
-import { buildGreetingMessage, buildRealtimeInstructions } from './prompt';
+import { buildGreetingMessage, buildRealtimeInstructions, buildTranscriptionPrompt } from './prompt';
 
-const TRANSCRIPTION_PROMPT_GUARD =
-  'LANstar, ipTIME, NEXI, NEXT, 네트워크 장비, 모델명, 케이블 길이와 색상은 정확히 유지합니다.';
+const TRANSCRIPTION_PROMPT_GUARD = buildTranscriptionPrompt();
 
 const twilioConnectedSchema = z.object({
   event: z.literal('connected'),
@@ -371,8 +370,7 @@ export class OpenAiRealtimeBridge {
           input_audio_transcription: {
             model: env.OPENAI_REALTIME_TRANSCRIBE_MODEL,
             language: env.OPENAI_REALTIME_LANGUAGE,
-            prompt:
-              'LANstar, ipTIME, NEXI, NEXT, 네트워크 장비, 모델명, 케이블 길이와 색상은 정확히 유지합니다.'
+            prompt: buildTranscriptionPrompt()
           },
           turn_detection: {
             type: 'server_vad',
@@ -559,6 +557,24 @@ export class OpenAiRealtimeBridge {
       return;
     }
 
+    const runtimeBefore = this.app.realtimeHub.getRuntime(this.callSessionId);
+    const currentState = runtimeBefore?.state ?? {};
+    const previousCustomerLine = [...(runtimeBefore?.transcriptLines ?? [])]
+      .reverse()
+      .find((line) => line.speaker === 'customer');
+    const repeatedQuestionCount =
+      previousCustomerLine &&
+      normalizeWhitespace(previousCustomerLine.text) === normalizeWhitespace(transcript)
+        ? (currentState.repeatedQuestionCount ?? 0) + 1
+        : (currentState.repeatedQuestionCount ?? 0);
+    const elapsedSeconds = runtimeBefore
+      ? Math.max(0, Math.round((Date.now() - Date.parse(runtimeBefore.createdAt)) / 1000))
+      : (currentState.elapsedSeconds ?? 0);
+    this.app.realtimeHub.patchState(this.callSessionId, {
+      repeatedQuestionCount,
+      elapsedSeconds
+    });
+
     const createdAt = new Date().toISOString();
     this.app.realtimeHub.addTranscriptLine(this.callSessionId, {
       speaker: 'customer',
@@ -602,6 +618,19 @@ export class OpenAiRealtimeBridge {
   }
 
   private async handleAiTranscript(transcript: string) {
+    const runtimeBefore = this.app.realtimeHub.getRuntime(this.callSessionId);
+    const currentState = runtimeBefore?.state ?? {};
+    const previousAiLine = [...(runtimeBefore?.transcriptLines ?? [])]
+      .reverse()
+      .find((line) => line.speaker === 'ai');
+    const assistantRepeatCount =
+      previousAiLine && normalizeWhitespace(previousAiLine.text) === normalizeWhitespace(transcript)
+        ? (currentState.assistantRepeatCount ?? 0) + 1
+        : 0;
+    this.app.realtimeHub.patchState(this.callSessionId, {
+      assistantRepeatCount
+    });
+
     const createdAt = new Date().toISOString();
     this.app.realtimeHub.addTranscriptLine(this.callSessionId, {
       speaker: 'ai',

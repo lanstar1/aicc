@@ -66,6 +66,9 @@ export function buildApprovedTurnInstructions(
 ) {
   const instructions = [
     'Reply in Korean in one short phone-friendly turn.',
+    'Keep the reply to one task and usually one or two short sentences.',
+    'If options are mentioned, mention at most two in one turn.',
+    'If a confirmation is needed, end with one clear yes or no question.',
     'Use the approved LANstar response below as the main content of your next reply.',
     `Approved response: ${responseText}`,
     'Do not add new facts beyond the approved response and the established session instructions.'

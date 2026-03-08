@@ -14,6 +14,32 @@ import { searchTechKnowledge } from '../tech/service';
 export type IntentType = 'order' | 'inventory' | 'quote' | 'tech' | 'other';
 export type CustomerType = 'existing' | 'new';
 export type HandoffTarget = 'sales' | 'tech' | 'none';
+export type CustomerResolutionMode =
+  | 'selected'
+  | 'phone_exact'
+  | 'name_exact'
+  | 'phone_name_fuzzy'
+  | 'candidate_only'
+  | 'unresolved';
+export type ProductResolutionMode =
+  | 'selected'
+  | 'item_exact'
+  | 'model_exact'
+  | 'compact_exact'
+  | 'candidate_only'
+  | 'unresolved';
+export type ConversationStage =
+  | 'opening'
+  | 'customer'
+  | 'product'
+  | 'quantity'
+  | 'delivery'
+  | 'confirmation'
+  | 'inventory'
+  | 'quote'
+  | 'tech'
+  | 'handoff'
+  | 'resolved';
 export type NextAction =
   | 'confirm_customer'
   | 'ask_brand_or_product'
@@ -35,20 +61,32 @@ export type ConversationState = {
   customerConfirmed?: boolean;
   pendingCustomerId?: string | undefined;
   pendingCustomerName?: string | undefined;
+  pendingProductId?: string | undefined;
+  pendingProductCode?: string | undefined;
+  pendingProductName?: string | undefined;
   orderConfirmed?: boolean;
-  pendingConfirmation?: 'customer' | 'order' | null;
+  pendingConfirmation?: 'customer' | 'product' | 'order' | null;
   customerType?: CustomerType;
   brand?: string;
-  productQuery?: string;
-  productId?: string;
-  productCode?: string;
-  productName?: string;
+  productQuery?: string | undefined;
+  productId?: string | undefined;
+  productCode?: string | undefined;
+  productName?: string | undefined;
   qty?: number;
   shippingMethod?: DeliveryMethod;
   warehouseCode?: '10' | '30';
   assistantRepeatCount?: number;
   repeatedQuestionCount?: number;
   elapsedSeconds?: number;
+  repairCount?: number;
+  customerCandidateCount?: number;
+  productCandidateCount?: number;
+  customerResolutionMode?: CustomerResolutionMode;
+  productResolutionMode?: ProductResolutionMode;
+  conversationStage?: ConversationStage;
+  lastCustomerNameHint?: string | undefined;
+  lastProductQuery?: string | undefined;
+  lastSuggestedPrompt?: string | undefined;
 };
 
 export type AnalyzeTurnInput = {
@@ -252,11 +290,25 @@ export async function analyzeTurn(
   }
 
   const productCandidates = await resolveProducts(app, productLookupInput);
-  const resolvedProduct = pickResolvedProduct({
+  const productSelection = pickResolvedProduct({
     candidates: productCandidates,
     currentProductCode: state.productCode,
     productQuery
   });
+  let resolvedProduct = productSelection.resolved;
+
+  if (
+    state.pendingConfirmation === 'product' &&
+    confirmationSignal === 'yes' &&
+    state.pendingProductId &&
+    !resolvedProduct
+  ) {
+    const confirmedProduct = await loadDirectProduct(app, state.pendingProductId, state.pendingProductCode);
+
+    if (confirmedProduct) {
+      resolvedProduct = mapProductCandidate(confirmedProduct, customerType);
+    }
+  }
   const techCandidates =
     intent === 'tech' ? await searchTechCandidates(app, productQuery ?? utterance) : [];
 
@@ -276,7 +328,7 @@ export async function analyzeTurn(
     customerCandidatesCount: customerResolution.candidates.length,
     customerConfirmed,
     productCandidatesCount: productCandidates.length,
-    productCodeResolved: Boolean(state.productCode) || Boolean(resolvedProduct?.itemCode),
+    productCodeResolved: Boolean(resolvedProduct?.itemCode),
     qtyResolved: qty !== undefined,
     shippingResolved: shippingMethod !== null,
     orderConfirmed
@@ -301,17 +353,50 @@ export async function analyzeTurn(
   }
 
   const assistantPrompt = buildAssistantPrompt(assistantPromptInput);
+  const customerResolutionMode = customerResolution.resolutionMode;
+  const productResolutionMode = resolvedProduct
+    ? productSelection.resolutionMode
+    : productCandidates.length > 0
+      ? 'candidate_only'
+      : 'unresolved';
+  const nextRepairCount = shouldIncreaseRepairCount({
+    nextAction,
+    state,
+    customerCandidatesCount: customerResolution.candidates.length,
+    productCandidatesCount: productCandidates.length,
+    confirmationSignal
+  })
+    ? (state.repairCount ?? 0) + 1
+    : (state.repairCount ?? 0);
 
   const statePatch: ConversationState = {};
   statePatch.intentType = intent;
   statePatch.customerType = customerType;
   statePatch.customerConfirmed = customerConfirmed;
   statePatch.orderConfirmed = orderConfirmed;
+  statePatch.customerCandidateCount = customerResolution.candidates.length;
+  statePatch.productCandidateCount = productCandidates.length;
+  statePatch.customerResolutionMode = customerResolutionMode;
+  statePatch.productResolutionMode = productResolutionMode;
+  statePatch.lastCustomerNameHint = customerNameHint;
+  statePatch.lastProductQuery = productQuery;
+  statePatch.lastSuggestedPrompt = assistantPrompt;
+  statePatch.conversationStage = mapNextActionToStage(nextAction, intent);
+  statePatch.repairCount = nextRepairCount;
 
   if (state.pendingConfirmation === 'customer' && confirmationSignal === 'no') {
     statePatch.customerId = undefined;
     statePatch.pendingCustomerId = undefined;
     statePatch.pendingCustomerName = undefined;
+  }
+
+  if (state.pendingConfirmation === 'product' && confirmationSignal === 'no') {
+    statePatch.productId = undefined;
+    statePatch.productCode = undefined;
+    statePatch.productName = undefined;
+    statePatch.pendingProductId = undefined;
+    statePatch.pendingProductCode = undefined;
+    statePatch.pendingProductName = undefined;
   }
 
   if (
@@ -327,7 +412,7 @@ export async function analyzeTurn(
     statePatch.customerId = effectiveCustomer.id;
   }
 
-  if (resolvedProduct) {
+  if (resolvedProduct && !(state.pendingConfirmation === 'product' && confirmationSignal === 'no')) {
     statePatch.productId = resolvedProduct.id;
     statePatch.productCode = resolvedProduct.itemCode;
     statePatch.productName = resolvedProduct.productName;
@@ -358,9 +443,22 @@ export async function analyzeTurn(
     statePatch.pendingCustomerName = undefined;
   }
 
+  if (nextAction === 'clarify_product') {
+    const pendingProduct = productCandidates[0] ?? null;
+    statePatch.pendingProductId = pendingProduct?.id;
+    statePatch.pendingProductCode = pendingProduct?.itemCode;
+    statePatch.pendingProductName = pendingProduct?.productName;
+  } else {
+    statePatch.pendingProductId = undefined;
+    statePatch.pendingProductCode = undefined;
+    statePatch.pendingProductName = undefined;
+  }
+
   statePatch.pendingConfirmation =
     nextAction === 'confirm_customer'
       ? 'customer'
+      : nextAction === 'clarify_product'
+        ? 'product'
       : nextAction === 'confirm_order'
         ? 'order'
         : null;
@@ -386,6 +484,14 @@ export async function analyzeTurn(
       qty,
       shippingMethod,
       shippingMethodLabel: shippingMethod ? deliveryMethodLabels[shippingMethod] : null
+    },
+    quality: {
+      customerResolutionMode,
+      productResolutionMode,
+      customerCandidatesCount: customerResolution.candidates.length,
+      productCandidatesCount: productCandidates.length,
+      repairCount: nextRepairCount,
+      conversationStage: statePatch.conversationStage
     },
     customer: effectiveCustomer,
     customerCandidates: customerResolution.candidates,
@@ -586,7 +692,8 @@ async function resolveCustomer(
 
     return {
       resolved: mapCustomerCandidate(customer),
-      candidates: [mapCustomerCandidate(customer)]
+      candidates: [mapCustomerCandidate(customer)],
+      resolutionMode: 'selected' as CustomerResolutionMode
     };
   }
 
@@ -597,7 +704,8 @@ async function resolveCustomer(
   if (!phoneDigits && !nameHint && !normalizedNameHint) {
     return {
       resolved: null,
-      candidates: []
+      candidates: [],
+      resolutionMode: 'unresolved' as CustomerResolutionMode
     };
   }
 
@@ -661,21 +769,35 @@ async function resolveCustomer(
   const candidates = result.rows.map(mapCustomerCandidate);
   const top = result.rows[0];
   const second = result.rows[1];
+  const topPhoneExact =
+    top &&
+    phoneDigits !== null &&
+    ((top.phone ? normalizeDigits(top.phone) === phoneDigits : false) ||
+      (top.mobile ? normalizeDigits(top.mobile) === phoneDigits : false));
+  const topNameExact =
+    top && normalizedNameHint !== null && normalizeCustomerNameHint(top.customer_name) === normalizedNameHint;
   const resolved =
     top &&
-    ((phoneDigits !== null &&
-      ((top.phone ? normalizeDigits(top.phone) === phoneDigits : false) ||
-        (top.mobile ? normalizeDigits(top.mobile) === phoneDigits : false)) &&
-      (!second || (top.score ?? 0) - (second.score ?? 0) >= 10)) ||
-      (normalizedNameHint !== null &&
-        normalizeCustomerNameHint(top.customer_name) === normalizedNameHint &&
-        (!second || (top.score ?? 0) - (second.score ?? 0) >= 15)))
+    ((topPhoneExact && (!second || (top.score ?? 0) - (second.score ?? 0) >= 10)) ||
+      (topNameExact && (!second || (top.score ?? 0) - (second.score ?? 0) >= 15)))
       ? mapCustomerCandidate(top)
       : null;
+  const resolutionMode: CustomerResolutionMode = resolved
+    ? topPhoneExact && topNameExact
+      ? 'phone_name_fuzzy'
+      : topPhoneExact
+        ? 'phone_exact'
+        : topNameExact
+          ? 'name_exact'
+          : 'phone_name_fuzzy'
+    : candidates.length > 0
+      ? 'candidate_only'
+      : 'unresolved';
 
   return {
     resolved,
-    candidates
+    candidates,
+    resolutionMode
   };
 }
 
@@ -1124,7 +1246,7 @@ function decideNextAction(input: {
       return 'ask_brand_or_product';
     }
 
-    if (!input.productCodeResolved && input.productCandidatesCount > 1) {
+    if (!input.productCodeResolved && input.productCandidatesCount >= 1) {
       return 'clarify_product';
     }
 
@@ -1148,7 +1270,7 @@ function decideNextAction(input: {
       return 'ask_brand_or_product';
     }
 
-    if (!input.productCodeResolved && input.productCandidatesCount > 1) {
+    if (!input.productCodeResolved && input.productCandidatesCount >= 1) {
       return 'clarify_product';
     }
 
@@ -1164,7 +1286,7 @@ function decideNextAction(input: {
       return 'ask_brand_or_product';
     }
 
-    if (!input.productCodeResolved && input.productCandidatesCount > 1) {
+    if (!input.productCodeResolved && input.productCandidatesCount >= 1) {
       return 'clarify_product';
     }
 
@@ -1201,10 +1323,14 @@ function buildAssistantPrompt(input: {
   qty?: number;
   shippingMethod: DeliveryMethod | null;
   confirmationSignal: 'yes' | 'no' | 'unknown';
-  pendingConfirmation: 'customer' | 'order' | null;
+  pendingConfirmation: 'customer' | 'product' | 'order' | null;
 }) {
   if (input.pendingConfirmation === 'customer' && input.confirmationSignal === 'no') {
     return '정확한 거래처명과 전화번호 뒷자리 네 자리를 다시 말씀해 주세요.';
+  }
+
+  if (input.pendingConfirmation === 'product' && input.confirmationSignal === 'no') {
+    return '모델명이나 품명을 다시 확인하겠습니다. 모델명이 있으면 먼저 말씀해 주시고, 없으면 제조사와 품명, 규격을 천천히 말씀해 주세요.';
   }
 
   if (input.pendingConfirmation === 'order' && input.confirmationSignal === 'no') {
@@ -1213,18 +1339,28 @@ function buildAssistantPrompt(input: {
 
   switch (input.nextAction) {
     case 'confirm_customer':
+      if (input.customerCandidates.length > 1) {
+        return `확인된 거래처 후보는 ${formatCustomerCandidates(input.customerCandidates)} 입니다. 어느 거래처인지 말씀해 주시거나 전화번호 뒷자리 네 자리를 다시 말씀해 주세요.`;
+      }
+
       return `${input.resolvedCustomerName ?? input.customerCandidates[0]?.customerName ?? '거래처명'} 맞으실까요? 아니시면 거래처명과 전화번호 뒷자리 네 자리를 다시 말씀해 주세요.`;
     case 'ask_brand_or_product':
-      return '모델명이 있으면 모델명을 먼저 말씀해 주시고, 없으면 제조사와 품명, 규격을 순서대로 말씀해 주세요.';
+      return '모델명이 있으면 모델명을 먼저 말씀해 주세요. 없으면 제조사, 품명, 규격 중 한 가지부터 천천히 말씀해 주세요.';
     case 'clarify_product':
-      return `확인된 품목이 여러 개입니다. ${input.productCandidates
+      if (input.productCandidates.length === 1) {
+        const candidate = input.productCandidates[0];
+
+        if (!candidate) {
+          return '모델명이 있으면 모델명을 먼저 말씀해 주세요. 없으면 제조사와 품명을 다시 말씀해 주세요.';
+        }
+
+        return `확인하겠습니다. ${formatProductCandidate(candidate)} 맞으실까요?`;
+      }
+
+      return `확인된 품목 후보는 ${input.productCandidates
         .slice(0, 2)
-        .map((candidate) =>
-          candidate.modelName
-            ? `${candidate.productName} (${candidate.modelName})`
-            : `${candidate.productName} (${candidate.itemCode})`
-        )
-        .join(', ')} 중 어떤 제품인지 말씀해 주세요.`;
+        .map(formatProductCandidate)
+        .join(', ')} 입니다. 어느 제품인지 말씀해 주세요.`;
     case 'ask_quantity':
       return '수량을 개수 기준으로 말씀해 주세요.';
     case 'ask_delivery':
@@ -1239,9 +1375,7 @@ function buildAssistantPrompt(input: {
 
       if (leadProduct) {
         parts.push(
-          leadProduct.modelName
-            ? `${leadProduct.productName} ${leadProduct.modelName}`
-            : leadProduct.productName
+          formatProductCandidate(leadProduct)
         );
       }
 
@@ -1336,6 +1470,80 @@ function calculateConfidence(input: {
   }
 
   return Number(Math.max(0, Math.min(0.99, score)).toFixed(2));
+}
+
+function shouldIncreaseRepairCount(input: {
+  nextAction: NextAction;
+  state: ConversationState;
+  customerCandidatesCount: number;
+  productCandidatesCount: number;
+  confirmationSignal: 'yes' | 'no' | 'unknown';
+}) {
+  if (input.confirmationSignal === 'no') {
+    return true;
+  }
+
+  if (input.nextAction === 'confirm_customer' && input.customerCandidatesCount > 0) {
+    return true;
+  }
+
+  if (input.nextAction === 'clarify_product' && input.productCandidatesCount > 0) {
+    return true;
+  }
+
+  if (
+    input.nextAction === 'ask_brand_or_product' &&
+    (input.state.productCandidateCount ?? 0) === 0 &&
+    Boolean(input.state.lastProductQuery)
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+function mapNextActionToStage(nextAction: NextAction, intent: IntentType): ConversationStage {
+  switch (nextAction) {
+    case 'confirm_customer':
+      return 'customer';
+    case 'ask_brand_or_product':
+    case 'clarify_product':
+      return 'product';
+    case 'ask_quantity':
+      return 'quantity';
+    case 'ask_delivery':
+      return 'delivery';
+    case 'confirm_order':
+      return 'confirmation';
+    case 'check_inventory':
+      return 'inventory';
+    case 'provide_quote':
+    case 'save_quote':
+      return 'quote';
+    case 'provide_tech_guidance':
+      return 'tech';
+    case 'human_handoff':
+      return 'handoff';
+    case 'save_order':
+      return 'resolved';
+    default:
+      return intent === 'other' ? 'opening' : 'product';
+  }
+}
+
+function formatCustomerCandidates(candidates: Array<ReturnType<typeof mapCustomerCandidate>>) {
+  return candidates
+    .slice(0, 2)
+    .map((candidate) => candidate.customerName)
+    .join(', ');
+}
+
+function formatProductCandidate(candidate: ReturnType<typeof mapProductCandidate>) {
+  if (candidate.modelName) {
+    return `${candidate.productName} ${candidate.modelName}`;
+  }
+
+  return `${candidate.productName} ${candidate.itemCode}`;
 }
 
 function detectShippingMethod(utterance: string): DeliveryMethod | null {
@@ -1483,7 +1691,10 @@ function pickResolvedProduct(input: {
   productQuery?: string | undefined;
 }) {
   if (input.candidates.length === 0) {
-    return null;
+    return {
+      resolved: null,
+      resolutionMode: 'unresolved' as ProductResolutionMode
+    };
   }
 
   if (input.currentProductCode) {
@@ -1492,38 +1703,61 @@ function pickResolvedProduct(input: {
     );
 
     if (exactByCode) {
-      return exactByCode;
+      return {
+        resolved: exactByCode,
+        resolutionMode: 'selected' as ProductResolutionMode
+      };
     }
   }
 
   const exactLookupToken = normalizeLookupToken(input.productQuery);
   const compactLookupToken = normalizeCompactLookupToken(input.productQuery);
   const top = input.candidates[0];
-  const second = input.candidates[1];
 
   if (!top) {
-    return null;
+    return {
+      resolved: null,
+      resolutionMode: 'unresolved' as ProductResolutionMode
+    };
   }
 
-  const exactTokenMatched =
-    (exactLookupToken !== null &&
-      [top.itemCode, top.modelName]
-        .filter((value): value is string => Boolean(value))
-        .some((value) => normalizeLookupToken(value) === exactLookupToken)) ||
-    (compactLookupToken !== null &&
-      [top.itemCode, top.modelName]
-        .filter((value): value is string => Boolean(value))
-        .some((value) => normalizeCompactLookupToken(value) === compactLookupToken));
-
-  if (exactTokenMatched) {
-    return top;
+  if (
+    exactLookupToken !== null &&
+    normalizeLookupToken(top.itemCode) === exactLookupToken
+  ) {
+    return {
+      resolved: top,
+      resolutionMode: 'item_exact' as ProductResolutionMode
+    };
   }
 
-  if (top.score >= 85 && (!second || top.score - second.score >= 15)) {
-    return top;
+  if (
+    exactLookupToken !== null &&
+    top.modelName &&
+    normalizeLookupToken(top.modelName) === exactLookupToken
+  ) {
+    return {
+      resolved: top,
+      resolutionMode: 'model_exact' as ProductResolutionMode
+    };
   }
 
-  return null;
+  if (
+    compactLookupToken !== null &&
+    [top.itemCode, top.modelName]
+      .filter((value): value is string => Boolean(value))
+      .some((value) => normalizeCompactLookupToken(value) === compactLookupToken)
+  ) {
+    return {
+      resolved: top,
+      resolutionMode: 'compact_exact' as ProductResolutionMode
+    };
+  }
+
+  return {
+    resolved: null,
+    resolutionMode: input.candidates.length > 0 ? ('candidate_only' as ProductResolutionMode) : ('unresolved' as ProductResolutionMode)
+  };
 }
 
 async function syncCallSession(

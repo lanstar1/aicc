@@ -26,13 +26,16 @@ const scenarioTurnSchema = z.object({
       customerId: z.string().uuid().optional(),
       customerConfirmed: z.boolean().optional(),
       orderConfirmed: z.boolean().optional(),
-      pendingConfirmation: z.enum(['customer', 'order']).nullable().optional(),
+      pendingConfirmation: z.enum(['customer', 'product', 'order']).nullable().optional(),
       customerType: z.enum(['existing', 'new']).optional(),
       brand: z.string().trim().optional(),
       productQuery: z.string().trim().optional(),
       productId: z.string().uuid().optional(),
       productCode: z.string().trim().optional(),
       productName: z.string().trim().optional(),
+      pendingProductId: z.string().uuid().optional(),
+      pendingProductCode: z.string().trim().optional(),
+      pendingProductName: z.string().trim().optional(),
       qty: z.number().positive().optional(),
       shippingMethod: z
         .enum([
@@ -47,7 +50,22 @@ const scenarioTurnSchema = z.object({
       warehouseCode: z.enum(['10', '30']).optional(),
       assistantRepeatCount: z.number().int().nonnegative().optional(),
       repeatedQuestionCount: z.number().int().nonnegative().optional(),
-      elapsedSeconds: z.number().int().nonnegative().optional()
+      elapsedSeconds: z.number().int().nonnegative().optional(),
+      repairCount: z.number().int().nonnegative().optional(),
+      customerCandidateCount: z.number().int().nonnegative().optional(),
+      productCandidateCount: z.number().int().nonnegative().optional(),
+      customerResolutionMode: z
+        .enum(['selected', 'phone_exact', 'name_exact', 'phone_name_fuzzy', 'candidate_only', 'unresolved'])
+        .optional(),
+      productResolutionMode: z
+        .enum(['selected', 'item_exact', 'model_exact', 'compact_exact', 'candidate_only', 'unresolved'])
+        .optional(),
+      conversationStage: z
+        .enum(['opening', 'customer', 'product', 'quantity', 'delivery', 'confirmation', 'inventory', 'quote', 'tech', 'handoff', 'resolved'])
+        .optional(),
+      lastCustomerNameHint: z.string().trim().optional(),
+      lastProductQuery: z.string().trim().optional(),
+      lastSuggestedPrompt: z.string().trim().optional()
     })
     .partial()
     .optional()
