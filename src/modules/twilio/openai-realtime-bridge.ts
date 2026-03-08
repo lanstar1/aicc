@@ -3,6 +3,7 @@ import WebSocket, { type RawData } from 'ws';
 import { z } from 'zod';
 
 import { env } from '../../config/env';
+import { normalizeWhitespace } from '../../lib/normalize';
 import type { CallControlTarget } from '../control/registry';
 import {
   analyzeTurn,
@@ -12,6 +13,9 @@ import {
 import { buildApprovedTurnInstructions, resolveTurnResponse } from '../orchestrator/turn-runtime';
 import { finalizeCallSession } from '../calls/finalize-service';
 import { buildGreetingMessage, buildRealtimeInstructions } from './prompt';
+
+const TRANSCRIPTION_PROMPT_GUARD =
+  'LANstar, ipTIME, NEXI, NEXT, 네트워크 장비, 모델명, 케이블 길이와 색상은 정확히 유지합니다.';
 
 const twilioConnectedSchema = z.object({
   event: z.literal('connected'),
@@ -551,6 +555,10 @@ export class OpenAiRealtimeBridge {
   }
 
   private async handleCustomerTranscript(transcript: string) {
+    if (normalizeWhitespace(transcript) === normalizeWhitespace(TRANSCRIPTION_PROMPT_GUARD)) {
+      return;
+    }
+
     const createdAt = new Date().toISOString();
     this.app.realtimeHub.addTranscriptLine(this.callSessionId, {
       speaker: 'customer',

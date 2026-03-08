@@ -31,8 +31,10 @@ export type NextAction =
 
 export type ConversationState = {
   intentType?: IntentType;
-  customerId?: string;
+  customerId?: string | undefined;
   customerConfirmed?: boolean;
+  pendingCustomerId?: string | undefined;
+  pendingCustomerName?: string | undefined;
   orderConfirmed?: boolean;
   pendingConfirmation?: 'customer' | 'order' | null;
   customerType?: CustomerType;
@@ -178,10 +180,14 @@ export async function analyzeTurn(
     detectShippingMethod(utterance);
   const qty = input.hints?.qty ?? state.qty ?? extractQty(utterance);
   const brand = normalizeWhitespace(input.hints?.brand) ?? state.brand ?? detectBrand(utterance);
+  const customerNameHint =
+    normalizeWhitespace(input.hints?.customerName) ??
+    state.pendingCustomerName ??
+    extractCustomerName(utterance);
   const productQuery =
     normalizeWhitespace(input.hints?.productQuery) ??
     state.productQuery ??
-    extractProductQuery(utterance, brand, input.hints?.customerName);
+    extractProductQuery(utterance, brand, customerNameHint);
 
   const intent = classifyIntent(utterance, state.intentType);
   const customerLookupInput: {
@@ -198,12 +204,27 @@ export async function analyzeTurn(
     customerLookupInput.callerNumber = input.callerNumber;
   }
 
-  if (input.hints?.customerName) {
-    customerLookupInput.customerNameHint = input.hints.customerName;
+  if (customerNameHint) {
+    customerLookupInput.customerNameHint = customerNameHint;
   }
 
   const customerResolution = await resolveCustomer(app, customerLookupInput);
-  const customerType = inferCustomerType(customerResolution.resolved, state.customerType);
+  let effectiveCustomer = customerResolution.resolved;
+
+  if (
+    state.pendingConfirmation === 'customer' &&
+    confirmationSignal === 'yes' &&
+    state.pendingCustomerId &&
+    !effectiveCustomer
+  ) {
+    const confirmedCandidate =
+      customerResolution.candidates.find((candidate) => candidate.id === state.pendingCustomerId) ??
+      mapCustomerCandidate(await loadCustomerById(app, state.pendingCustomerId));
+
+    effectiveCustomer = confirmedCandidate;
+  }
+
+  const customerType = inferCustomerType(effectiveCustomer, state.customerType);
   const productLookupInput: {
     productId?: string;
     productCode?: string;
@@ -231,12 +252,11 @@ export async function analyzeTurn(
   }
 
   const productCandidates = await resolveProducts(app, productLookupInput);
-  const resolvedProduct =
-    productCandidates.length === 1
-      ? productCandidates[0]
-      : state.productCode
-        ? productCandidates.find((candidate) => candidate.itemCode === state.productCode) ?? null
-        : null;
+  const resolvedProduct = pickResolvedProduct({
+    candidates: productCandidates,
+    currentProductCode: state.productCode,
+    productQuery
+  });
   const techCandidates =
     intent === 'tech' ? await searchTechCandidates(app, productQuery ?? utterance) : [];
 
@@ -252,7 +272,8 @@ export async function analyzeTurn(
   const nextAction = decideNextAction({
     intent,
     handoffRequired,
-    customerResolved: Boolean(customerResolution.resolved),
+    customerResolved: Boolean(effectiveCustomer),
+    customerCandidatesCount: customerResolution.candidates.length,
     customerConfirmed,
     productCandidatesCount: productCandidates.length,
     productCodeResolved: Boolean(state.productCode) || Boolean(resolvedProduct?.itemCode),
@@ -263,6 +284,7 @@ export async function analyzeTurn(
   const assistantPromptInput: Parameters<typeof buildAssistantPrompt>[0] = {
     nextAction,
     intent,
+    customerCandidates: customerResolution.candidates,
     productCandidates,
     techCandidates,
     shippingMethod,
@@ -270,8 +292,8 @@ export async function analyzeTurn(
     pendingConfirmation: state.pendingConfirmation ?? null
   };
 
-  if (customerResolution.resolved?.customerName) {
-    assistantPromptInput.resolvedCustomerName = customerResolution.resolved.customerName;
+  if (effectiveCustomer?.customerName) {
+    assistantPromptInput.resolvedCustomerName = effectiveCustomer.customerName;
   }
 
   if (qty !== undefined) {
@@ -286,8 +308,23 @@ export async function analyzeTurn(
   statePatch.customerConfirmed = customerConfirmed;
   statePatch.orderConfirmed = orderConfirmed;
 
-  if (customerResolution.resolved && !(state.pendingConfirmation === 'customer' && confirmationSignal === 'no')) {
-    statePatch.customerId = customerResolution.resolved.id;
+  if (state.pendingConfirmation === 'customer' && confirmationSignal === 'no') {
+    statePatch.customerId = undefined;
+    statePatch.pendingCustomerId = undefined;
+    statePatch.pendingCustomerName = undefined;
+  }
+
+  if (
+    state.pendingConfirmation === 'customer' &&
+    confirmationSignal === 'yes' &&
+    state.pendingCustomerId
+  ) {
+    statePatch.customerId = state.pendingCustomerId;
+    statePatch.customerConfirmed = true;
+  }
+
+  if (effectiveCustomer && !(state.pendingConfirmation === 'customer' && confirmationSignal === 'no')) {
+    statePatch.customerId = effectiveCustomer.id;
   }
 
   if (resolvedProduct) {
@@ -312,6 +349,15 @@ export async function analyzeTurn(
     statePatch.shippingMethod = shippingMethod;
   }
 
+  if (nextAction === 'confirm_customer') {
+    const pendingCustomer = customerResolution.resolved ?? customerResolution.candidates[0] ?? null;
+    statePatch.pendingCustomerId = pendingCustomer?.id;
+    statePatch.pendingCustomerName = pendingCustomer?.customerName;
+  } else {
+    statePatch.pendingCustomerId = undefined;
+    statePatch.pendingCustomerName = undefined;
+  }
+
   statePatch.pendingConfirmation =
     nextAction === 'confirm_customer'
       ? 'customer'
@@ -334,13 +380,14 @@ export async function analyzeTurn(
     handoffReasons,
     assistantPrompt,
     extracted: {
+      customerNameHint,
       brand,
       productQuery,
       qty,
       shippingMethod,
       shippingMethodLabel: shippingMethod ? deliveryMethodLabels[shippingMethod] : null
     },
-    customer: customerResolution.resolved,
+    customer: effectiveCustomer,
     customerCandidates: customerResolution.candidates,
     productCandidates,
     techCandidates,
@@ -359,8 +406,8 @@ export async function analyzeTurn(
       handoffTarget
     };
 
-    if (customerResolution.resolved?.id) {
-      syncInput.customerId = customerResolution.resolved.id;
+    if (effectiveCustomer?.id) {
+      syncInput.customerId = effectiveCustomer.id;
     }
 
     await syncCallSession(app, input.callSessionId, syncInput);
@@ -545,8 +592,9 @@ async function resolveCustomer(
 
   const phoneDigits = normalizeDigits(input.callerNumber);
   const nameHint = normalizeWhitespace(input.customerNameHint);
+  const normalizedNameHint = normalizeCustomerNameHint(nameHint);
 
-  if (!phoneDigits && !nameHint) {
+  if (!phoneDigits && !nameHint && !normalizedNameHint) {
     return {
       resolved: null,
       candidates: []
@@ -580,7 +628,15 @@ async function resolveCustomer(
           end
           +
           case
-            when $2::text is not null then similarity(customer_name, $2) * 20
+            when $4::text is not null and coalesce(customer_name_normalized, '') = $4 then 70
+            else 0
+          end
+          +
+          case
+            when $2::text is not null then greatest(
+              similarity(customer_name, $2) * 20,
+              similarity(coalesce(customer_name_normalized, ''), coalesce($4, '')) * 35
+            )
             else 0
           end
         ) as score
@@ -588,11 +644,18 @@ async function resolveCustomer(
       where
         ($1::text is not null and (phone_digits like '%' || $1 || '%' or mobile_digits like '%' || $1 || '%'))
         or
-        ($2::text is not null and (customer_name ilike $3 or coalesce(customer_name_normalized, '') ilike $3))
+        (
+          $2::text is not null and (
+            customer_name ilike $3
+            or coalesce(customer_name_normalized, '') ilike '%' || coalesce($4, '') || '%'
+            or similarity(customer_name, $2) >= 0.2
+            or similarity(coalesce(customer_name_normalized, ''), coalesce($4, '')) >= 0.2
+          )
+        )
       order by score desc, customer_name asc
       limit 5
     `,
-    [phoneDigits, nameHint, nameLike]
+    [phoneDigits, nameHint, nameLike, normalizedNameHint]
   );
 
   const candidates = result.rows.map(mapCustomerCandidate);
@@ -604,8 +667,8 @@ async function resolveCustomer(
       ((top.phone ? normalizeDigits(top.phone) === phoneDigits : false) ||
         (top.mobile ? normalizeDigits(top.mobile) === phoneDigits : false)) &&
       (!second || (top.score ?? 0) - (second.score ?? 0) >= 10)) ||
-      (nameHint !== null &&
-        top.customer_name.toLowerCase() === nameHint.toLowerCase() &&
+      (normalizedNameHint !== null &&
+        normalizeCustomerNameHint(top.customer_name) === normalizedNameHint &&
         (!second || (top.score ?? 0) - (second.score ?? 0) >= 15)))
       ? mapCustomerCandidate(top)
       : null;
@@ -641,6 +704,8 @@ async function resolveProducts(
   const brand = normalizeWhitespace(input.brand);
   const brandLike = brand ? `%${brand}%` : null;
   const qLike = `%${productQuery}%`;
+  const exactLookupToken = normalizeLookupToken(productQuery);
+  const compactLookupToken = normalizeCompactLookupToken(productQuery);
   const preferLanstar = !brand || brand.toLowerCase() === 'lanstar';
   const result = await app.db.query<ProductCandidateRow>(
     `
@@ -658,6 +723,18 @@ async function resolveProducts(
         (
           case
             when $2::boolean is true and mp.is_lanstar then 25
+            else 0
+          end
+          +
+          case
+            when $6::text is not null and upper(regexp_replace(mp.item_code, '\s+', '', 'g')) = $6 then 130
+            when $6::text is not null and upper(regexp_replace(coalesce(mp.model_name, ''), '\s+', '', 'g')) = $6 then 120
+            else 0
+          end
+          +
+          case
+            when $7::text is not null and regexp_replace(upper(mp.item_code), '[^A-Z0-9]', '', 'g') = $7 then 115
+            when $7::text is not null and regexp_replace(upper(coalesce(mp.model_name, '')), '[^A-Z0-9]', '', 'g') = $7 then 105
             else 0
           end
           +
@@ -690,6 +767,16 @@ async function resolveProducts(
         mp.is_active = true
         and ($3::text is null or mp.brand ilike $4)
         and (
+          ($6::text is not null and (
+            upper(regexp_replace(mp.item_code, '\s+', '', 'g')) = $6
+            or upper(regexp_replace(coalesce(mp.model_name, ''), '\s+', '', 'g')) = $6
+          ))
+          or
+          ($7::text is not null and (
+            regexp_replace(upper(mp.item_code), '[^A-Z0-9]', '', 'g') = $7
+            or regexp_replace(upper(coalesce(mp.model_name, '')), '[^A-Z0-9]', '', 'g') = $7
+          ))
+          or
           mp.search_text ilike $5
           or mp.product_name ilike $5
           or coalesce(mp.model_name, '') ilike $5
@@ -697,13 +784,16 @@ async function resolveProducts(
             select 1
             from aicc.product_alias pa
             where pa.product_id = mp.id
-              and pa.alias_text ilike $5
+              and (
+                pa.alias_text ilike $5
+                or ($7::text is not null and regexp_replace(upper(pa.alias_text), '[^A-Z0-9]', '', 'g') = $7)
+              )
           )
         )
       order by score desc, mp.is_lanstar desc, mp.guide_price nulls last, mp.product_name asc
       limit 5
     `,
-    [productQuery, preferLanstar, brand, brandLike, qLike]
+    [productQuery, preferLanstar, brand, brandLike, qLike, exactLookupToken, compactLookupToken]
   );
 
   return result.rows.map((row) => mapProductCandidate(row, input.customerType));
@@ -1009,6 +1099,7 @@ function decideNextAction(input: {
   intent: IntentType;
   handoffRequired: boolean;
   customerResolved: boolean;
+  customerCandidatesCount: number;
   customerConfirmed: boolean;
   productCandidatesCount: number;
   productCodeResolved: boolean;
@@ -1021,6 +1112,10 @@ function decideNextAction(input: {
   }
 
   if (input.intent === 'order') {
+    if (!input.customerResolved && input.customerCandidatesCount > 0) {
+      return 'confirm_customer';
+    }
+
     if (input.customerResolved && !input.customerConfirmed) {
       return 'confirm_customer';
     }
@@ -1061,6 +1156,10 @@ function decideNextAction(input: {
   }
 
   if (input.intent === 'quote') {
+    if (!input.customerResolved && input.customerCandidatesCount > 0) {
+      return 'confirm_customer';
+    }
+
     if (!input.productCodeResolved && input.productCandidatesCount === 0) {
       return 'ask_brand_or_product';
     }
@@ -1093,6 +1192,7 @@ function buildAssistantPrompt(input: {
   nextAction: NextAction;
   intent: IntentType;
   resolvedCustomerName?: string;
+  customerCandidates: Array<ReturnType<typeof mapCustomerCandidate>>;
   productCandidates: Array<ReturnType<typeof mapProductCandidate>>;
   techCandidates: Array<{
     answerSnippet: string;
@@ -1113,13 +1213,17 @@ function buildAssistantPrompt(input: {
 
   switch (input.nextAction) {
     case 'confirm_customer':
-      return `${input.resolvedCustomerName} 맞으실까요?`;
+      return `${input.resolvedCustomerName ?? input.customerCandidates[0]?.customerName ?? '거래처명'} 맞으실까요? 아니시면 거래처명과 전화번호 뒷자리 네 자리를 다시 말씀해 주세요.`;
     case 'ask_brand_or_product':
-      return '제조사와 품명, 규격을 순서대로 말씀해 주세요.';
+      return '모델명이 있으면 모델명을 먼저 말씀해 주시고, 없으면 제조사와 품명, 규격을 순서대로 말씀해 주세요.';
     case 'clarify_product':
       return `확인된 품목이 여러 개입니다. ${input.productCandidates
         .slice(0, 2)
-        .map((candidate) => candidate.productName)
+        .map((candidate) =>
+          candidate.modelName
+            ? `${candidate.productName} (${candidate.modelName})`
+            : `${candidate.productName} (${candidate.itemCode})`
+        )
         .join(', ')} 중 어떤 제품인지 말씀해 주세요.`;
     case 'ask_quantity':
       return '수량을 개수 기준으로 말씀해 주세요.';
@@ -1134,7 +1238,11 @@ function buildAssistantPrompt(input: {
       }
 
       if (leadProduct) {
-        parts.push(leadProduct.productName);
+        parts.push(
+          leadProduct.modelName
+            ? `${leadProduct.productName} ${leadProduct.modelName}`
+            : leadProduct.productName
+        );
       }
 
       if (input.qty !== undefined) {
@@ -1297,6 +1405,125 @@ function extractProductQuery(
 
   const normalized = normalizeWhitespace(value);
   return normalized && normalized.length >= 2 ? normalized : undefined;
+}
+
+function extractCustomerName(utterance: string) {
+  const normalized = normalizeWhitespace(utterance);
+
+  if (!normalized) {
+    return undefined;
+  }
+
+  const candidates = [
+    normalized.match(/(?:안녕하세요[,.! ]*)?(.{2,30}?)(?:입니다|인데요|이구요|이고요|예요|이에요)(?:[.!? ]|$)/),
+    normalized.match(/(?:저희|여기는|여기|거래처)\s*(.{2,30}?)(?:입니다|인데요|이에요|예요)(?:[.!? ]|$)/)
+  ];
+
+  for (const candidate of candidates) {
+    const raw = normalizeWhitespace(candidate?.[1]);
+
+    if (!raw) {
+      continue;
+    }
+
+    const cleaned = normalizeWhitespace(
+      raw
+        .replace(/^(네|예|안녕하세요|저희는|저는)\s+/g, '')
+        .replace(/\b(주문|발주|재고|견적|문의)\b.*$/g, '')
+    );
+
+    if (!cleaned || cleaned.length < 2) {
+      continue;
+    }
+
+    if (containsAnyKeyword(cleaned.toLowerCase(), orderKeywords.concat(quoteKeywords, inventoryKeywords, techKeywords))) {
+      continue;
+    }
+
+    return cleaned;
+  }
+
+  return undefined;
+}
+
+function normalizeCustomerNameHint(value?: string | null) {
+  const normalized = normalizeWhitespace(value);
+
+  if (!normalized) {
+    return null;
+  }
+
+  return normalized.toLowerCase().replace(/\s+/g, '');
+}
+
+function normalizeLookupToken(value?: string | null) {
+  const normalized = normalizeWhitespace(value);
+
+  if (!normalized) {
+    return null;
+  }
+
+  return normalized.toUpperCase().replace(/\s+/g, '');
+}
+
+function normalizeCompactLookupToken(value?: string | null) {
+  const normalized = normalizeWhitespace(value);
+
+  if (!normalized) {
+    return null;
+  }
+
+  const compact = normalized.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  return compact.length > 0 ? compact : null;
+}
+
+function pickResolvedProduct(input: {
+  candidates: Array<ReturnType<typeof mapProductCandidate>>;
+  currentProductCode?: string | undefined;
+  productQuery?: string | undefined;
+}) {
+  if (input.candidates.length === 0) {
+    return null;
+  }
+
+  if (input.currentProductCode) {
+    const exactByCode = input.candidates.find(
+      (candidate) => candidate.itemCode === input.currentProductCode
+    );
+
+    if (exactByCode) {
+      return exactByCode;
+    }
+  }
+
+  const exactLookupToken = normalizeLookupToken(input.productQuery);
+  const compactLookupToken = normalizeCompactLookupToken(input.productQuery);
+  const top = input.candidates[0];
+  const second = input.candidates[1];
+
+  if (!top) {
+    return null;
+  }
+
+  const exactTokenMatched =
+    (exactLookupToken !== null &&
+      [top.itemCode, top.modelName]
+        .filter((value): value is string => Boolean(value))
+        .some((value) => normalizeLookupToken(value) === exactLookupToken)) ||
+    (compactLookupToken !== null &&
+      [top.itemCode, top.modelName]
+        .filter((value): value is string => Boolean(value))
+        .some((value) => normalizeCompactLookupToken(value) === compactLookupToken));
+
+  if (exactTokenMatched) {
+    return top;
+  }
+
+  if (top.score >= 85 && (!second || top.score - second.score >= 15)) {
+    return top;
+  }
+
+  return null;
 }
 
 async function syncCallSession(
