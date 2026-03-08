@@ -11,10 +11,11 @@
 
 - Runtime: `node`
 - Build: `npm ci --include=dev && npm run build`
-- Start: `npm start`
+- Start: `NODE_ENV=production npm start`
 - Health check: `GET /ready`
 - 기본 포트: `10000`
 - Node: `22.x`
+- `NODE_ENV=production`은 빌드 환경변수가 아니라 `startCommand`에서만 적용
 
 ## Cron Job 설정
 

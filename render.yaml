@@ -11,12 +11,10 @@ services:
     runtime: node
     plan: starter
     buildCommand: npm ci --include=dev && npm run build
-    startCommand: npm start
+    startCommand: NODE_ENV=production npm start
     healthCheckPath: /ready
     autoDeploy: false
     envVars:
-      - key: NODE_ENV
-        value: production
       - key: PORT
         value: "10000"
       - key: DATABASE_SSL
@@ -92,10 +90,8 @@ services:
     plan: starter
     schedule: "0 18 * * *"
     buildCommand: npm ci --include=dev && npm run build
-    startCommand: npm run purge:retention
+    startCommand: NODE_ENV=production npm run purge:retention
     envVars:
-      - key: NODE_ENV
-        value: production
       - key: DATABASE_SSL
         value: "true"
       - key: DATABASE_URL
