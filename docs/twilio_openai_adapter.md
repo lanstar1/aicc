@@ -43,6 +43,7 @@ Twilio 전화 인입을 OpenAI Realtime 세션에 연결하고, 생성된 전사
 
 - `OPENAI_REALTIME_INSTRUCTIONS`
 - `TWILIO_STREAM_TOKEN`
+- `TWILIO_AUTH_TOKEN`
 
 ## 현재 설정
 
@@ -55,6 +56,12 @@ Twilio 전화 인입을 OpenAI Realtime 세션에 연결하고, 생성된 전사
 ## 제한
 
 - 실제 Twilio 계정과 OpenAI 운영 키로 종단 테스트는 아직 하지 않았다.
-- WebSocket 업그레이드의 Twilio 서명 검증은 아직 구현하지 않았다.
 - 현재는 Media Streams 기반이며 SIP/ConversationRelay는 아직 아니다.
 - 자동 주문/견적 저장은 `확인 응답 -> 상태 확인 -> workflow` 경로까지만 연결되어 있으며, 복수 품목/수정 응답 튜닝은 추가 고도화가 필요하다.
+
+## 운영 메모
+
+- `voice/inbound`, `voice/status`는 `TWILIO_AUTH_TOKEN`이 설정되어 있으면 `X-Twilio-Signature` 검증을 수행한다.
+- Media Stream 연결 URL은 query string 대신 path parameter를 사용한다.
+  - `wss://<host>/api/v1/twilio/media-stream/:callSessionId/:token?`
+- `TWILIO_STREAM_TOKEN`이 설정되어 있으면 WebSocket 경로의 토큰과 일치해야 연결된다.

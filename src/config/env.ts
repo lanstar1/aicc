@@ -40,6 +40,7 @@ const envSchema = z.object({
     .optional()
     .transform((value) => (value && value.trim().length > 0 ? value.trim() : undefined)),
   TWILIO_STREAM_TOKEN: z.string().optional(),
+  TWILIO_AUTH_TOKEN: z.string().optional(),
   SMS_PROVIDER: z.string().default('erp'),
   AUTO_ORDER_NOTIFICATION_ENABLED: z
     .string()

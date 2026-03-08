@@ -5,6 +5,7 @@ import { env } from '../../config/env';
 import { createHttpError } from '../../lib/http';
 import { normalizeDigits } from '../../lib/normalize';
 import { OpenAiRealtimeBridge } from './openai-realtime-bridge';
+import { buildTwilioRequestUrl, validateTwilioSignature } from './signature';
 
 const inboundBodySchema = z.object({
   CallSid: z.string().trim().min(1),
@@ -18,13 +19,14 @@ const statusBodySchema = z.object({
   CallStatus: z.string().trim().min(1)
 });
 
-const mediaStreamQuerySchema = z.object({
+const mediaStreamParamsSchema = z.object({
   callSessionId: z.string().uuid(),
   token: z.string().trim().optional()
 });
 
 const twilioRoutes: FastifyPluginAsync = async (app) => {
   app.post('/voice/inbound', async (request, reply) => {
+    assertValidTwilioRequest(request);
     const body = inboundBodySchema.parse(request.body);
     const result = await app.db.query(
       `
@@ -60,6 +62,7 @@ const twilioRoutes: FastifyPluginAsync = async (app) => {
   });
 
   app.post('/voice/status', async (request, reply) => {
+    assertValidTwilioRequest(request);
     const body = statusBodySchema.parse(request.body);
     const mappedStatus = mapTwilioStatus(body.CallStatus);
     const transcriptFull = await loadTranscriptForCall(app, body.CallSid);
@@ -83,17 +86,17 @@ const twilioRoutes: FastifyPluginAsync = async (app) => {
   });
 
   app.get(
-    '/media-stream',
+    '/media-stream/:callSessionId/:token?',
     { websocket: true },
     (socket, request) => {
-      const query = mediaStreamQuerySchema.parse(request.query);
+      const params = mediaStreamParamsSchema.parse(request.params);
 
-      if (!authorizeTwilioStream(query.token)) {
+      if (!authorizeTwilioStream(params.token)) {
         socket.close(1008, 'Unauthorized');
         return;
       }
 
-      const bridge = new OpenAiRealtimeBridge(app, socket, query.callSessionId);
+      const bridge = new OpenAiRealtimeBridge(app, socket, params.callSessionId);
 
       socket.on('message', (raw) => {
         void bridge.handleTwilioMessage(raw);
@@ -121,14 +124,13 @@ function buildMediaStreamUrl(
   }
 
   const wsBaseUrl = publicBaseUrl.replace(/^http:/i, 'ws:').replace(/^https:/i, 'wss:');
-  const url = new URL('/api/v1/twilio/media-stream', wsBaseUrl);
-  url.searchParams.set('callSessionId', callSessionId);
+  const pathSegments = ['/api/v1/twilio/media-stream', encodeURIComponent(callSessionId)];
 
   if (env.TWILIO_STREAM_TOKEN) {
-    url.searchParams.set('token', env.TWILIO_STREAM_TOKEN);
+    pathSegments.push(encodeURIComponent(env.TWILIO_STREAM_TOKEN));
   }
 
-  return url.toString();
+  return new URL(pathSegments.join('/'), wsBaseUrl).toString();
 }
 
 function inferPublicBaseUrl(request: {
@@ -180,6 +182,40 @@ function authorizeTwilioStream(token?: string) {
   }
 
   return token === env.TWILIO_STREAM_TOKEN;
+}
+
+function assertValidTwilioRequest(request: FastifyRequest) {
+  if (!env.TWILIO_AUTH_TOKEN) {
+    return;
+  }
+
+  const signature = request.headers['x-twilio-signature'];
+
+  if (typeof signature !== 'string' || !signature.trim()) {
+    throw createHttpError(403, 'Missing Twilio signature');
+  }
+
+  const url = buildTwilioRequestUrl(request, env.PUBLIC_BASE_URL);
+
+  if (!url) {
+    throw createHttpError(500, 'Unable to build Twilio request URL');
+  }
+
+  const body =
+    request.body && typeof request.body === 'object' && !Array.isArray(request.body)
+      ? (request.body as Record<string, unknown>)
+      : {};
+
+  const valid = validateTwilioSignature({
+    authToken: env.TWILIO_AUTH_TOKEN,
+    signature,
+    url,
+    params: body
+  });
+
+  if (!valid) {
+    throw createHttpError(403, 'Invalid Twilio signature');
+  }
 }
 
 function mapTwilioStatus(value: string) {

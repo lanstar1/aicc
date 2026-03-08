@@ -46,6 +46,8 @@ const healthRoutes: FastifyPluginAsync = async (app) => {
         ),
         openaiConfigured: Boolean(env.OPENAI_API_KEY),
         twilioStreamingConfigured: Boolean(env.PUBLIC_BASE_URL),
+        twilioStreamTokenConfigured: Boolean(env.TWILIO_STREAM_TOKEN),
+        twilioWebhookValidationConfigured: Boolean(env.TWILIO_AUTH_TOKEN),
         notificationMockMode: env.NOTIFICATION_MOCK_MODE,
         smsProvider: env.SMS_PROVIDER
       }

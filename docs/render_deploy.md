@@ -34,8 +34,9 @@
 5. 첫 배포 완료 후 Shell 또는 One-off Job에서 `npm run db:apply-schema`를 1회 실행한다.
 6. 이어서 동일한 방식으로 `npm run import:data`를 1회 실행한다.
 7. Twilio를 쓸 경우 `TWILIO_STREAM_TOKEN`과 Twilio Voice webhook URL을 설정한다.
-8. 메일/SMS/알림톡을 실발송하려면 `NOTIFICATION_MOCK_MODE=false` 상태에서 관련 webhook/SMTP 값을 채운다.
-9. 배포 후 `npm run smoke:test -- --base-url https://<service>.onrender.com`으로 확인한다.
+8. 가능하면 `TWILIO_AUTH_TOKEN`도 채워서 Twilio POST 웹훅 서명 검증을 켠다.
+9. 메일/SMS/알림톡을 실발송하려면 `NOTIFICATION_MOCK_MODE=false` 상태에서 관련 webhook/SMTP 값을 채운다.
+10. 배포 후 `npm run smoke:test -- --base-url https://<service>.onrender.com`으로 확인한다.
 
 ## Render Postgres 생성 방법
 
@@ -104,6 +105,7 @@ npm run import:data
   - `ADMIN_API_TOKEN`
   - `REALTIME_WS_TOKEN`
   - `TWILIO_STREAM_TOKEN`
+  - `TWILIO_AUTH_TOKEN`
   - `EMAIL_FROM_ADDRESS`
   - `SMTP_HOST`
   - `SMTP_PORT`
@@ -127,5 +129,12 @@ npm run import:data
 3. `npm run smoke:test -- --base-url https://<service>.onrender.com`
 4. 관리자 화면 접속
 5. `npm run simulate:call -- --scenario quote-lanstar`
+
+## Twilio 콘솔 입력값
+
+- Voice webhook:
+  - `POST https://lanstar-aicc-api.onrender.com/api/v1/twilio/voice/inbound`
+- Call status webhook:
+  - `POST https://lanstar-aicc-api.onrender.com/api/v1/twilio/voice/status`
 
 참고: Render 공식 문서상 `render.yaml`은 `runtime`, `buildCommand`, `startCommand`, `healthCheckPath`, `schedule`, `envVars`를 지원합니다. Cron schedule은 UTC 기준입니다. 출처: [Render Blueprint spec](https://render.com/docs/blueprint-spec), [Render Cron Jobs](https://render.com/docs/cronjobs)
