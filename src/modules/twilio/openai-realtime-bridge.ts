@@ -370,7 +370,7 @@ export class OpenAiRealtimeBridge {
       this.sendOpenAiEvent({
         type: 'session.update',
         session: {
-          modalities: ['audio'],
+          modalities: ['audio', 'text'],
           voice: env.OPENAI_REALTIME_VOICE,
           input_audio_format: 'g711_ulaw',
           output_audio_format: 'g711_ulaw',
