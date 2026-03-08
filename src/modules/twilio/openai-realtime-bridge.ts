@@ -237,6 +237,17 @@ export class OpenAiRealtimeBridge {
     this.callSid = message.start.callSid;
     this.callerNumber = message.start.customParameters?.callerNumber ?? null;
 
+    this.app.log.info(
+      {
+        route: 'twilio.media.start',
+        callSessionId: this.callSessionId,
+        callSid: this.callSid,
+        streamSid: this.streamSid,
+        callerNumber: this.callerNumber
+      },
+      'Twilio media stream started'
+    );
+
     this.app.realtimeHub.setProviderCallId(this.callSessionId, message.start.callSid);
 
     if (this.callerNumber) {
@@ -349,6 +360,13 @@ export class OpenAiRealtimeBridge {
     });
 
     this.openAiSocket.on('open', () => {
+      this.app.log.info(
+        {
+          route: 'openai.realtime',
+          callSessionId: this.callSessionId
+        },
+        'OpenAI realtime websocket opened'
+      );
       this.scheduleGreetingFallback();
       this.sendOpenAiEvent({
         type: 'session.update',
@@ -393,6 +411,13 @@ export class OpenAiRealtimeBridge {
     });
 
     this.openAiSocket.on('close', () => {
+      this.app.log.info(
+        {
+          route: 'openai.realtime',
+          callSessionId: this.callSessionId
+        },
+        'OpenAI realtime websocket closed'
+      );
       this.openAiSocket = null;
       this.clearGreetingFallbackTimer();
       this.responseActive = false;
@@ -400,6 +425,14 @@ export class OpenAiRealtimeBridge {
     });
 
     this.openAiSocket.on('error', async (error) => {
+      this.app.log.error(
+        {
+          route: 'openai.realtime',
+          callSessionId: this.callSessionId,
+          message: error.message
+        },
+        'OpenAI realtime websocket error'
+      );
       await this.appendCallEvent('system', 'system', 'openai.error', {
         message: error.message
       });
@@ -427,6 +460,14 @@ export class OpenAiRealtimeBridge {
     }
 
     if ((eventType === 'session.created' || eventType === 'session.updated') && !this.greetingSent) {
+      this.app.log.info(
+        {
+          route: 'openai.realtime',
+          callSessionId: this.callSessionId,
+          eventType
+        },
+        'OpenAI realtime session ready'
+      );
       this.sessionReady = true;
       this.clearGreetingFallbackTimer();
       this.greetingSent = true;
@@ -516,6 +557,14 @@ export class OpenAiRealtimeBridge {
     }
 
     if (eventType === 'error') {
+      this.app.log.error(
+        {
+          route: 'openai.realtime',
+          callSessionId: this.callSessionId,
+          error: event
+        },
+        'OpenAI realtime event error'
+      );
       await this.appendCallEvent('system', 'system', 'openai.error', {
         error: event
       });
@@ -596,6 +645,15 @@ export class OpenAiRealtimeBridge {
       return;
     }
 
+    this.app.log.info(
+      {
+        route: 'openai.realtime',
+        callSessionId: this.callSessionId,
+        sessionReady: this.sessionReady
+      },
+      'Injecting greeting response'
+    );
+
     this.sendOpenAiEvent({
       type: 'response.create',
       response: {
@@ -655,6 +713,14 @@ export class OpenAiRealtimeBridge {
   }
 
   private async respondWithApprovedPrompt(turnInstructions: string) {
+    this.app.log.info(
+      {
+        route: 'openai.realtime',
+        callSessionId: this.callSessionId,
+        promptLength: turnInstructions.length
+      },
+      'Sending approved response to OpenAI realtime'
+    );
     this.sendTwilioControl('clear');
     this.sendOpenAiEvent({
       type: 'response.cancel'

@@ -11,7 +11,27 @@ import {
 } from '../notifications/service';
 
 const listCallsQuerySchema = z.object({
-  activeOnly: z.coerce.boolean().default(true),
+  activeOnly: z
+    .union([z.boolean(), z.string(), z.undefined()])
+    .transform((value) => {
+      if (typeof value === 'boolean') {
+        return value;
+      }
+
+      if (typeof value === 'string') {
+        const normalized = value.trim().toLowerCase();
+
+        if (['false', '0', 'off', 'no'].includes(normalized)) {
+          return false;
+        }
+
+        if (['true', '1', 'on', 'yes'].includes(normalized)) {
+          return true;
+        }
+      }
+
+      return true;
+    }),
   limit: z.coerce.number().int().min(1).max(100).default(20)
 });
 

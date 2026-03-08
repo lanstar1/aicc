@@ -28,6 +28,15 @@ const twilioRoutes: FastifyPluginAsync = async (app) => {
   app.post('/voice/inbound', async (request, reply) => {
     assertValidTwilioRequest(request);
     const body = inboundBodySchema.parse(request.body);
+    app.log.info(
+      {
+        route: 'twilio.voice.inbound',
+        callSid: body.CallSid,
+        from: body.From,
+        to: body.To ?? null
+      },
+      'Twilio inbound webhook received'
+    );
     const result = await app.db.query(
       `
         insert into aicc.call_session (
@@ -57,6 +66,16 @@ const twilioRoutes: FastifyPluginAsync = async (app) => {
       callSessionId: callSession.id
     });
 
+    app.log.info(
+      {
+        route: 'twilio.voice.inbound',
+        callSessionId: callSession.id,
+        callSid: body.CallSid,
+        mediaUrl
+      },
+      'Twilio inbound webhook responded with media stream TwiML'
+    );
+
     reply.header('content-type', 'text/xml; charset=utf-8');
     return reply.send(xml);
   });
@@ -66,6 +85,15 @@ const twilioRoutes: FastifyPluginAsync = async (app) => {
     const body = statusBodySchema.parse(request.body);
     const mappedStatus = mapTwilioStatus(body.CallStatus);
     const transcriptFull = await loadTranscriptForCall(app, body.CallSid);
+    app.log.info(
+      {
+        route: 'twilio.voice.status',
+        callSid: body.CallSid,
+        callStatus: body.CallStatus,
+        mappedStatus
+      },
+      'Twilio status webhook received'
+    );
 
     await app.db.query(
       `
@@ -92,9 +120,24 @@ const twilioRoutes: FastifyPluginAsync = async (app) => {
       const params = mediaStreamParamsSchema.parse(request.params);
 
       if (!authorizeTwilioStream(params.token)) {
+        app.log.warn(
+          {
+            route: 'twilio.media-stream',
+            callSessionId: params.callSessionId
+          },
+          'Twilio media stream rejected due to token mismatch'
+        );
         socket.close(1008, 'Unauthorized');
         return;
       }
+
+      app.log.info(
+        {
+          route: 'twilio.media-stream',
+          callSessionId: params.callSessionId
+        },
+        'Twilio media stream websocket accepted'
+      );
 
       const bridge = new OpenAiRealtimeBridge(app, socket, params.callSessionId);
 
