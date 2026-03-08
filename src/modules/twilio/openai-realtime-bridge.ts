@@ -180,7 +180,6 @@ export class OpenAiRealtimeBridge {
     this.sendOpenAiEvent({
       type: 'response.create',
       response: {
-        output_modalities: ['audio'],
         instructions: instruction
       }
     });
@@ -371,35 +370,23 @@ export class OpenAiRealtimeBridge {
       this.sendOpenAiEvent({
         type: 'session.update',
         session: {
-          type: 'realtime',
-          model: env.OPENAI_REALTIME_MODEL,
-          output_modalities: ['audio'],
-          audio: {
-            input: {
-              format: {
-                type: 'audio/pcmu'
-              },
-              transcription: {
-                model: env.OPENAI_REALTIME_TRANSCRIBE_MODEL,
-                language: env.OPENAI_REALTIME_LANGUAGE,
-                prompt:
-                  'LANstar, ipTIME, NEXI, NEXT, 네트워크 장비, 모델명, 케이블 길이와 색상은 정확히 유지합니다.'
-              },
-              turn_detection: {
-                type: 'server_vad',
-                threshold: 0.5,
-                prefix_padding_ms: 300,
-                silence_duration_ms: 500,
-                create_response: false,
-                interrupt_response: true
-              }
-            },
-            output: {
-              format: {
-                type: 'audio/pcmu'
-              },
-              voice: env.OPENAI_REALTIME_VOICE
-            }
+          modalities: ['audio'],
+          voice: env.OPENAI_REALTIME_VOICE,
+          input_audio_format: 'g711_ulaw',
+          output_audio_format: 'g711_ulaw',
+          input_audio_transcription: {
+            model: env.OPENAI_REALTIME_TRANSCRIBE_MODEL,
+            language: env.OPENAI_REALTIME_LANGUAGE,
+            prompt:
+              'LANstar, ipTIME, NEXI, NEXT, 네트워크 장비, 모델명, 케이블 길이와 색상은 정확히 유지합니다.'
+          },
+          turn_detection: {
+            type: 'server_vad',
+            threshold: 0.5,
+            prefix_padding_ms: 300,
+            silence_duration_ms: 500,
+            create_response: false,
+            interrupt_response: true
           },
           instructions: buildRealtimeInstructions()
         }
@@ -657,7 +644,6 @@ export class OpenAiRealtimeBridge {
     this.sendOpenAiEvent({
       type: 'response.create',
       response: {
-        output_modalities: ['audio'],
         instructions: buildGreetingMessage()
       }
     });
@@ -728,7 +714,6 @@ export class OpenAiRealtimeBridge {
     this.sendOpenAiEvent({
       type: 'response.create',
       response: {
-        output_modalities: ['audio'],
         instructions: turnInstructions
       }
     });
