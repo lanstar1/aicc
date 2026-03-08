@@ -10,7 +10,7 @@ services:
     name: lanstar-aicc-api
     runtime: node
     plan: starter
-    buildCommand: npm ci && npm run build
+    buildCommand: npm ci --include=dev && npm run build
     startCommand: npm start
     healthCheckPath: /ready
     autoDeploy: false
@@ -91,7 +91,7 @@ services:
     runtime: node
     plan: starter
     schedule: "0 18 * * *"
-    buildCommand: npm ci && npm run build
+    buildCommand: npm ci --include=dev && npm run build
     startCommand: npm run purge:retention
     envVars:
       - key: NODE_ENV

@@ -10,10 +10,11 @@
 ## Web Service 설정
 
 - Runtime: `node`
-- Build: `npm ci && npm run build`
+- Build: `npm ci --include=dev && npm run build`
 - Start: `npm start`
 - Health check: `GET /ready`
 - 기본 포트: `10000`
+- Node: `22.x`
 
 ## Cron Job 설정
 
