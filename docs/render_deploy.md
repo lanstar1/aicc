@@ -138,4 +138,6 @@ npm run import:data
 - Call status webhook:
   - `POST https://lanstar-aicc-api.onrender.com/api/v1/twilio/voice/status`
 
+실제 Twilio 번호 콘솔 설정과 첫 테스트콜 순서는 [twilio_console_setup.md](/Users/lanstar/Documents/New%20project/docs/twilio_console_setup.md) 참고.
+
 참고: Render 공식 문서상 `render.yaml`은 `runtime`, `buildCommand`, `startCommand`, `healthCheckPath`, `schedule`, `envVars`를 지원합니다. Cron schedule은 UTC 기준입니다. 출처: [Render Blueprint spec](https://render.com/docs/blueprint-spec), [Render Cron Jobs](https://render.com/docs/cronjobs)

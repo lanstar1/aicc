@@ -43,6 +43,7 @@
 - `연결` 버튼 클릭
 - 연결 직후 상단 `운영 준비 상태` 패널에서 데이터 적재 여부와 Twilio/ERP/OpenAI 준비 상태 확인
 - 통화 선택 후 우측 패널에서 메모/AI지시/takeover 실행
+- 실제 테스트콜 순서는 [twilio_console_setup.md](/Users/lanstar/Documents/New%20project/docs/twilio_console_setup.md) 기준으로 진행
 
 ## 제한
 

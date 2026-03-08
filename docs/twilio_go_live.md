@@ -2,6 +2,8 @@
 
 실제 대표번호를 붙이기 전 마지막 점검 문서다.
 
+상세한 Twilio 번호 콘솔 입력값과 첫 테스트콜 절차는 [twilio_console_setup.md](/Users/lanstar/Documents/New%20project/docs/twilio_console_setup.md)를 따른다.
+
 ## 준비 상태 확인 API
 
 운영 준비 상태는 아래 엔드포인트에서 한 번에 확인할 수 있다.
