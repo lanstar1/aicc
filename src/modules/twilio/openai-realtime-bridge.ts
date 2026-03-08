@@ -174,15 +174,8 @@ export class OpenAiRealtimeBridge {
 
     this.aiSuspended = false;
     this.sendTwilioControl('clear');
-    this.sendOpenAiEvent({
-      type: 'response.cancel'
-    });
-    this.sendOpenAiEvent({
-      type: 'response.create',
-      response: {
-        instructions: instruction
-      }
-    });
+    this.cancelActiveOpenAiResponse();
+    this.createOpenAiResponse(instruction);
 
     await this.appendCallEvent('human_note', 'manager', instruction, {
       action: 'ai_instruction'
@@ -198,11 +191,8 @@ export class OpenAiRealtimeBridge {
 
   async takeover(target: CallControlTarget, reason?: string) {
     this.aiSuspended = true;
-    this.responseActive = false;
     this.sendTwilioControl('clear');
-    this.sendOpenAiEvent({
-      type: 'response.cancel'
-    });
+    this.cancelActiveOpenAiResponse();
 
     await this.app.db.query(
       `
@@ -467,11 +457,8 @@ export class OpenAiRealtimeBridge {
         return;
       }
 
-      this.responseActive = false;
       this.sendTwilioControl('clear');
-      this.sendOpenAiEvent({
-        type: 'response.cancel'
-      });
+      this.cancelActiveOpenAiResponse();
       return;
     }
 
@@ -647,6 +634,7 @@ export class OpenAiRealtimeBridge {
         instructions: buildGreetingMessage()
       }
     });
+    this.responseActive = true;
   }
 
   private async respondToAnalysis(
@@ -708,15 +696,8 @@ export class OpenAiRealtimeBridge {
       'Sending approved response to OpenAI realtime'
     );
     this.sendTwilioControl('clear');
-    this.sendOpenAiEvent({
-      type: 'response.cancel'
-    });
-    this.sendOpenAiEvent({
-      type: 'response.create',
-      response: {
-        instructions: turnInstructions
-      }
-    });
+    this.cancelActiveOpenAiResponse();
+    this.createOpenAiResponse(turnInstructions);
   }
 
   private sendTwilioControl(event: 'clear') {
@@ -738,6 +719,27 @@ export class OpenAiRealtimeBridge {
     }
 
     this.openAiSocket.send(JSON.stringify(payload));
+  }
+
+  private createOpenAiResponse(instructions: string) {
+    this.sendOpenAiEvent({
+      type: 'response.create',
+      response: {
+        instructions
+      }
+    });
+    this.responseActive = true;
+  }
+
+  private cancelActiveOpenAiResponse() {
+    if (!this.responseActive) {
+      return;
+    }
+
+    this.sendOpenAiEvent({
+      type: 'response.cancel'
+    });
+    this.responseActive = false;
   }
 
   private scheduleGreetingFallback() {
