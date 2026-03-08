@@ -37,7 +37,7 @@
         padding: 24px;
         display: grid;
         gap: 16px;
-        grid-template-rows: auto auto 1fr;
+        grid-template-rows: auto auto auto 1fr;
       }
 
       .hero,
@@ -89,6 +89,12 @@
         display: grid;
         gap: 12px;
         grid-template-columns: 1.2fr 1fr 0.8fr 0.6fr auto;
+      }
+
+      .go-live {
+        padding: 18px;
+        display: grid;
+        gap: 14px;
       }
 
       .field {
@@ -232,6 +238,37 @@
         gap: 10px;
       }
 
+      .readiness-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .readiness-item {
+        padding: 12px;
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.72);
+        border: 1px solid var(--line);
+        display: grid;
+        gap: 4px;
+      }
+
+      .readiness-item.ok {
+        border-color: rgba(47, 106, 82, 0.28);
+        background: rgba(47, 106, 82, 0.08);
+      }
+
+      .readiness-item.fail {
+        border-color: rgba(178, 68, 47, 0.24);
+        background: rgba(178, 68, 47, 0.08);
+      }
+
+      .url-list,
+      .step-list {
+        display: grid;
+        gap: 8px;
+      }
+
       .metric {
         padding: 12px;
         border-radius: 16px;
@@ -305,6 +342,10 @@
           grid-template-columns: repeat(2, minmax(0, 1fr));
         }
 
+        .readiness-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
         .grid {
           grid-template-columns: 1fr;
         }
@@ -345,6 +386,24 @@
           <label>&nbsp;</label>
           <button class="primary" id="connectBtn">연결</button>
         </div>
+      </section>
+
+      <section class="panel go-live">
+        <div class="mini-row">
+          <div>
+            <div class="panel-title">운영 준비 상태</div>
+            <div class="meta">Twilio, ERP, 데이터 적재, 관리자 접근 상태를 한 번에 확인합니다.</div>
+          </div>
+          <div class="status" id="goLiveStatus">확인 대기</div>
+        </div>
+        <div class="readiness-grid" id="goLiveGrid"></div>
+        <div class="mini-row">
+          <div class="panel-title">운영 URL</div>
+          <div class="meta">Twilio 콘솔 입력값</div>
+        </div>
+        <div class="url-list" id="goLiveUrls"></div>
+        <div class="panel-title">다음 조치</div>
+        <div class="step-list" id="goLiveSteps"></div>
       </section>
 
       <section class="grid">
@@ -445,6 +504,10 @@
         notificationChannel: document.getElementById("notificationChannel"),
         summaryBox: document.getElementById("summaryBox"),
         summaryPills: document.getElementById("summaryPills"),
+        goLiveStatus: document.getElementById("goLiveStatus"),
+        goLiveGrid: document.getElementById("goLiveGrid"),
+        goLiveUrls: document.getElementById("goLiveUrls"),
+        goLiveSteps: document.getElementById("goLiveSteps"),
         wsStatus: document.getElementById("wsStatus"),
         selectedCallStatus: document.getElementById("selectedCallStatus"),
         detailIntent: document.getElementById("detailIntent"),
@@ -490,7 +553,7 @@
         localStorage.setItem("aicc_realtime_token", state.realtimeToken);
         localStorage.setItem("aicc_active_only", state.activeOnly);
 
-        await Promise.all([loadSummary(), loadCalls()]);
+        await Promise.all([loadSummary(), loadGoLive(), loadCalls()]);
         connectWs();
       }
 
@@ -532,6 +595,18 @@
           pill.className = "pill";
           pill.textContent = `${item.status}: ${item.count}`;
           el.summaryPills.appendChild(pill);
+        }
+      }
+
+      async function loadGoLive() {
+        try {
+          const data = await api("/api/v1/meta/go-live");
+          renderGoLive(data);
+        } catch (error) {
+          el.goLiveStatus.textContent = "확인 실패";
+          el.goLiveGrid.innerHTML = `<div class="meta">${escapeHtml(error.message || "go-live 확인 실패")}</div>`;
+          el.goLiveUrls.innerHTML = "";
+          el.goLiveSteps.innerHTML = "";
         }
       }
 
@@ -586,6 +661,61 @@
           card.addEventListener("click", () => selectCall(call.id));
           el.callList.appendChild(card);
         }
+      }
+
+      function renderGoLive(data) {
+        el.goLiveStatus.textContent = data.readiness && Object.values(data.readiness).every(Boolean)
+          ? "오픈 가능"
+          : "추가 설정 필요";
+
+        const readinessLabels = {
+          dataSeeded: "데이터 적재",
+          ecountReady: "ERP",
+          openAiReady: "OpenAI",
+          twilioVoiceReady: "Twilio Voice",
+          twilioMediaReady: "Twilio Stream",
+          adminReady: "관리자 토큰",
+          realtimeMonitorReady: "실시간 모니터",
+          notificationsReady: "후속 알림"
+        };
+
+        el.goLiveGrid.innerHTML = Object.entries(data.readiness || {})
+          .map(([key, value]) => `
+            <div class="readiness-item ${value ? "ok" : "fail"}">
+              <div class="meta">${escapeHtml(readinessLabels[key] || key)}</div>
+              <strong>${value ? "정상" : "미설정"}</strong>
+            </div>
+          `)
+          .join("");
+
+        el.goLiveUrls.innerHTML = [
+          ["서비스", data.service?.publicBaseUrl],
+          ["관리자 화면", data.service?.adminConsoleUrl],
+          ["Voice webhook", data.twilio?.voiceWebhookUrl],
+          ["Status webhook", data.twilio?.statusWebhookUrl]
+        ]
+          .filter(([, value]) => Boolean(value))
+          .map(
+            ([label, value]) => `
+              <div class="summary-line">
+                <div class="mini-row">
+                  <strong>${escapeHtml(label)}</strong>
+                  <span class="badge">${escapeHtml(String(value))}</span>
+                </div>
+              </div>
+            `
+          )
+          .join("");
+
+        el.goLiveSteps.innerHTML = (data.nextSteps || [])
+          .map(
+            (step) => `
+              <div class="summary-line">
+                <div>${escapeHtml(step)}</div>
+              </div>
+            `
+          )
+          .join("");
       }
 
       function renderDetail(detail) {

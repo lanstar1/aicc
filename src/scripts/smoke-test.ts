@@ -24,6 +24,7 @@ async function main() {
   checks.push(await runHttpCheck('health.details', `${options.baseUrl}/health/details`));
   checks.push(await runHttpCheck('admin.console', `${options.baseUrl}/admin-console`));
   checks.push(await runHttpCheck('meta.sources', `${options.baseUrl}/api/v1/meta/sources`));
+  checks.push(await runHttpCheck('meta.go_live', `${options.baseUrl}/api/v1/meta/go-live`));
   checks.push(
     await runHttpCheck(
       'admin.summary',

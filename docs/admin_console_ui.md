@@ -11,6 +11,7 @@
 
 ## 기능
 
+- 운영 준비 상태(go-live) 확인
 - 실시간 통화 목록 조회
 - 통화 상세 / 전사 / 이벤트 확인
 - 주문/견적 초안 확인
@@ -24,6 +25,7 @@
 
 ## 연결 대상 API
 
+- `GET /api/v1/meta/go-live`
 - `GET /api/v1/admin/summary`
 - `GET /api/v1/admin/calls`
 - `GET /api/v1/admin/calls/:id`
@@ -39,6 +41,7 @@
 
 - 화면 상단에 `API Base`, `Admin Token`, `Realtime Token` 입력
 - `연결` 버튼 클릭
+- 연결 직후 상단 `운영 준비 상태` 패널에서 데이터 적재 여부와 Twilio/ERP/OpenAI 준비 상태 확인
 - 통화 선택 후 우측 패널에서 메모/AI지시/takeover 실행
 
 ## 제한
