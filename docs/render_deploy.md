@@ -129,6 +129,7 @@ npm run import:data
 3. `npm run smoke:test -- --base-url https://<service>.onrender.com`
 4. 관리자 화면 접속
 5. `npm run simulate:call -- --scenario quote-lanstar`
+6. `curl https://<service>.onrender.com/api/v1/meta/go-live`
 
 ## Twilio 콘솔 입력값
 

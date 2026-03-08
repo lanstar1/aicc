@@ -27,6 +27,7 @@
 ### 메타
 
 - `GET /api/v1/meta/sources`
+- `GET /api/v1/meta/go-live`
 
 ### 거래처
 
