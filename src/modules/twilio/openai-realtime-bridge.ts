@@ -92,10 +92,12 @@ export class OpenAiRealtimeBridge {
   private callSid: string | null = null;
   private callerNumber: string | null = null;
   private greetingSent = false;
+  private sessionReady = false;
   private responseActive = false;
   private closed = false;
   private aiTranscriptBuffer = '';
   private aiSuspended = false;
+  private greetingFallbackTimer: NodeJS.Timeout | null = null;
 
   constructor(
     private readonly app: FastifyInstance,
@@ -157,6 +159,7 @@ export class OpenAiRealtimeBridge {
     }
 
     this.closed = true;
+    this.clearGreetingFallbackTimer();
     this.app.callControlRegistry.unregister(this.callSessionId);
 
     if (this.openAiSocket && this.openAiSocket.readyState === this.openAiSocket.OPEN) {
@@ -346,6 +349,7 @@ export class OpenAiRealtimeBridge {
     });
 
     this.openAiSocket.on('open', () => {
+      this.scheduleGreetingFallback();
       this.sendOpenAiEvent({
         type: 'session.update',
         session: {
@@ -390,7 +394,9 @@ export class OpenAiRealtimeBridge {
 
     this.openAiSocket.on('close', () => {
       this.openAiSocket = null;
+      this.clearGreetingFallbackTimer();
       this.responseActive = false;
+      this.sessionReady = false;
     });
 
     this.openAiSocket.on('error', async (error) => {
@@ -420,7 +426,9 @@ export class OpenAiRealtimeBridge {
       return;
     }
 
-    if (eventType === 'session.updated' && !this.greetingSent) {
+    if ((eventType === 'session.created' || eventType === 'session.updated') && !this.greetingSent) {
+      this.sessionReady = true;
+      this.clearGreetingFallbackTimer();
       this.greetingSent = true;
       await this.injectGreeting();
       return;
@@ -589,12 +597,12 @@ export class OpenAiRealtimeBridge {
     }
 
     this.sendOpenAiEvent({
-        type: 'response.create',
-        response: {
-          output_modalities: ['audio'],
-          instructions: buildGreetingMessage()
-        }
-      });
+      type: 'response.create',
+      response: {
+        output_modalities: ['audio'],
+        instructions: buildGreetingMessage()
+      }
+    });
   }
 
   private async respondToAnalysis(
@@ -679,6 +687,27 @@ export class OpenAiRealtimeBridge {
     }
 
     this.openAiSocket.send(JSON.stringify(payload));
+  }
+
+  private scheduleGreetingFallback() {
+    this.clearGreetingFallbackTimer();
+    this.greetingFallbackTimer = setTimeout(() => {
+      if (this.closed || this.greetingSent || this.aiSuspended) {
+        return;
+      }
+
+      this.greetingSent = true;
+      void this.injectGreeting();
+    }, 1200);
+  }
+
+  private clearGreetingFallbackTimer() {
+    if (!this.greetingFallbackTimer) {
+      return;
+    }
+
+    clearTimeout(this.greetingFallbackTimer);
+    this.greetingFallbackTimer = null;
   }
 
   private async appendCallEvent(
