@@ -233,6 +233,14 @@ export async function replaceProductsForSource(
     return;
   }
 
+  const dedupedProducts = dedupeProducts(products);
+
+  if (dedupedProducts.length !== products.length) {
+    console.log(
+      `[import] deduped products for ${rawSourceName}: ${products.length} -> ${dedupedProducts.length}`
+    );
+  }
+
   await insertMany(
     client,
     'aicc.master_product',
@@ -255,7 +263,7 @@ export async function replaceProductsForSource(
       'raw_row_no',
       'is_active'
     ],
-    products.map((product) => [
+    dedupedProducts.map((product) => [
       product.productSource,
       product.brand,
       product.itemCode,
@@ -293,7 +301,7 @@ export async function replaceProductsForSource(
     productRows.rows.map((row) => [`${row.item_code}::${row.raw_sheet_name}`, row.id])
   );
 
-  const aliasRows = products.flatMap((product) => {
+  const aliasRows = dedupedProducts.flatMap((product) => {
     const productId = productIdByKey.get(`${product.itemCode}::${product.rawSheetName}`);
 
     if (!productId) {
@@ -312,6 +320,67 @@ export async function replaceProductsForSource(
       onConflict: 'on conflict (product_id, alias_text) do nothing'
     }
   );
+}
+
+function dedupeProducts(products: ProductSeed[]) {
+  const deduped = new Map<string, ProductSeed>();
+
+  for (const product of products) {
+    const key = [
+      product.productSource,
+      product.brand,
+      product.itemCode,
+      product.rawSheetName
+    ].join('::');
+    const current = deduped.get(key);
+
+    if (!current) {
+      deduped.set(key, product);
+      continue;
+    }
+
+    deduped.set(key, mergeDuplicateProducts(current, product));
+  }
+
+  return Array.from(deduped.values());
+}
+
+function mergeDuplicateProducts(primary: ProductSeed, incoming: ProductSeed): ProductSeed {
+  const preferred =
+    compareRowOrder(primary.rawRowNo, incoming.rawRowNo) <= 0 ? primary : incoming;
+  const secondary = preferred === primary ? incoming : primary;
+
+  return {
+    ...preferred,
+    productName: preferred.productName || secondary.productName,
+    modelName: preferred.modelName ?? secondary.modelName,
+    specText: preferred.specText ?? secondary.specText,
+    dealerPrice: preferred.dealerPrice ?? secondary.dealerPrice,
+    onlinePrice: preferred.onlinePrice ?? secondary.onlinePrice,
+    guidePrice: preferred.guidePrice ?? secondary.guidePrice,
+    shippingPolicy: preferred.shippingPolicy ?? secondary.shippingPolicy,
+    searchText:
+      preferred.searchText.length >= secondary.searchText.length
+        ? preferred.searchText
+        : secondary.searchText,
+    aliases: Array.from(new Set([...preferred.aliases, ...secondary.aliases]))
+  };
+}
+
+function compareRowOrder(left: number | null, right: number | null) {
+  if (left === null && right === null) {
+    return 0;
+  }
+
+  if (left === null) {
+    return 1;
+  }
+
+  if (right === null) {
+    return -1;
+  }
+
+  return left - right;
 }
 
 function toVendorCatalogSeed(
