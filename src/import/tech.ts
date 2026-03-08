@@ -1,9 +1,8 @@
-import { readFile, stat } from 'node:fs/promises';
-
 import type { PoolClient } from 'pg';
 
 import type { TechChunkSeed, TechModelSeed } from './types';
 import { insertMany } from './db';
+import { getSourceUpdatedAt, readTextSource } from './source-reader';
 import {
   buildSearchText,
   cleanCell,
@@ -55,8 +54,8 @@ export async function loadTechSeeds(paths: {
   models: TechModelSeed[];
   chunks: TechChunkSeed[];
 }> {
-  const [mergedStat, mergedItems, rawQnaItems, talkItems] = await Promise.all([
-    stat(paths.mergedTechJson),
+  const [mergedUpdatedAt, mergedItems, rawQnaItems, talkItems] = await Promise.all([
+    getSourceUpdatedAt(paths.mergedTechJson),
     readJson<MergedTechItem[]>(paths.mergedTechJson),
     readJson<RawQnaItem[]>(paths.rawQnaJson),
     readJson<TalkOrderItem[]>(paths.talkOrderJson)
@@ -79,7 +78,7 @@ export async function loadTechSeeds(paths: {
       category: cleanCell(item.category),
       qnaCount: item.qna_count ?? item.qna?.length ?? 0,
       searchText: buildSearchText([modelName, productName, item.category]),
-      sourceUpdatedAt: mergedStat.mtime
+      sourceUpdatedAt: mergedUpdatedAt
     });
   }
 
@@ -246,7 +245,7 @@ export async function replaceTechData(
 }
 
 async function readJson<T>(path: string): Promise<T> {
-  const content = await readFile(path, 'utf8');
+  const content = await readTextSource(path);
   return JSON.parse(content) as T;
 }
 

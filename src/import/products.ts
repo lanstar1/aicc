@@ -1,5 +1,6 @@
 import type { PoolClient } from 'pg';
 
+import { isHttpSource } from './source-reader';
 import { vendorWorkbookConfigs } from './source-config';
 import type { ProductSeed, VendorCatalogSeed } from './types';
 import type { VendorSheetConfig, VendorWorkbookConfig } from './vendor-config';
@@ -14,8 +15,8 @@ import {
 } from './utils';
 import { getCell, getSheetRows, loadWorkbook } from './workbook';
 
-export async function loadLanstarProductSeeds(path: string): Promise<ProductSeed[]> {
-  const workbook = await loadWorkbook({ kind: 'file', path });
+export async function loadLanstarProductSeeds(source: string): Promise<ProductSeed[]> {
+  const workbook = await loadWorkbook(toWorkbookLocation(source));
   const [sheetName] = workbook.SheetNames;
 
   if (!sheetName) {
@@ -68,8 +69,8 @@ export async function loadLanstarProductSeeds(path: string): Promise<ProductSeed
   return seeds;
 }
 
-export async function loadDomesticProductSeeds(path: string): Promise<ProductSeed[]> {
-  const workbook = await loadWorkbook({ kind: 'file', path });
+export async function loadDomesticProductSeeds(source: string): Promise<ProductSeed[]> {
+  const workbook = await loadWorkbook(toWorkbookLocation(source));
   const [sheetName] = workbook.SheetNames;
 
   if (!sheetName) {
@@ -154,6 +155,18 @@ export async function loadVendorWorkbookSeeds(): Promise<{
     catalogs,
     products
   };
+}
+
+function toWorkbookLocation(source: string) {
+  return isHttpSource(source)
+    ? {
+        kind: 'url' as const,
+        url: source
+      }
+    : {
+        kind: 'file' as const,
+        path: source
+      };
 }
 
 export async function replaceVendorCatalogs(client: PoolClient, catalogs: VendorCatalogSeed[]) {

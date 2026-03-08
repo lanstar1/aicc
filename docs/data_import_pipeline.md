@@ -34,6 +34,30 @@ npm run import:data
 
 기본값은 현재 작업 환경 기준 경로/URL로 설정되어 있고, `.env.example`에서 확인 가능.
 
+Render에서는 `/Users/lanstar/...` 같은 로컬 맥 경로를 읽을 수 없다. 따라서 아래 7개는 `공개 접근 가능한 https URL` 또는 Render 내부 경로로 다시 지정해야 한다.
+
+- `IMPORT_CUSTOMERS_XLSX`
+- `IMPORT_LANSTAR_PRODUCTS_XLSX`
+- `IMPORT_DOMESTIC_PRODUCTS_XLSX`
+- `IMPORT_MERGED_TECH_JSON`
+- `IMPORT_RAW_QNA_JSON`
+- `IMPORT_TALK_ORDER_JSON`
+- `IMPORT_NEXI_XLSX`
+
+현재 적재기는 `file path`와 `https URL`을 둘 다 지원한다.
+
+예시:
+
+```bash
+IMPORT_CUSTOMERS_XLSX=https://example.com/거래처.xlsx
+IMPORT_LANSTAR_PRODUCTS_XLSX=https://example.com/품목_LANstar.xlsx
+IMPORT_DOMESTIC_PRODUCTS_XLSX=https://example.com/품목_내수.xlsx
+IMPORT_MERGED_TECH_JSON=https://example.com/기술문의.json
+IMPORT_RAW_QNA_JSON=https://example.com/lanstar_qna_result_20260211_1113.json
+IMPORT_TALK_ORDER_JSON=https://example.com/talk_order_data_20260209_1645.json
+IMPORT_NEXI_XLSX=https://example.com/NEXI.xlsx
+```
+
 ## 적재 순서
 
 1. 거래처 `거래처.xlsx`
@@ -97,3 +121,6 @@ npm run import:data
 - `xlsx` 패키지 audit 경고가 1건 있음
 - 현재 적재기는 신뢰 가능한 내부 파일을 전제로 작성됨
 - 실제 Render DB에 넣기 전 `001_aicc_schema.sql`을 먼저 적용해야 함
+- `/ready`는 Shell 명령이 아니라 HTTP 엔드포인트다
+  - Render Shell 안에서는 `curl http://127.0.0.1:10000/ready`
+  - 외부에서는 `https://<service>.onrender.com/ready`

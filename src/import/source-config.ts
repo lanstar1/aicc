@@ -1,5 +1,6 @@
 import { env } from '../config/env';
 import type { VendorWorkbookConfig } from './vendor-config';
+import { isHttpSource } from './source-reader';
 
 export const importSources = {
   customersXlsx: env.IMPORT_CUSTOMERS_XLSX ?? '/Users/lanstar/Downloads/AI-CC/거래처.xlsx',
@@ -123,10 +124,7 @@ export const vendorWorkbookConfigs: VendorWorkbookConfig[] = [
     brand: 'NEXI',
     sourceName: 'vendor_nexi_excel',
     productSource: 'vendor_excel',
-    location: {
-      kind: 'file',
-      path: importSources.nexiXlsx
-    },
+    location: toWorkbookLocation(importSources.nexiXlsx),
     sheets: [
       {
         sheetName: '단가표시트',
@@ -147,3 +145,14 @@ export const vendorWorkbookConfigs: VendorWorkbookConfig[] = [
   }
 ];
 
+function toWorkbookLocation(source: string) {
+  return isHttpSource(source)
+    ? {
+        kind: 'url' as const,
+        url: source
+      }
+    : {
+        kind: 'file' as const,
+        path: source
+      };
+}

@@ -1,16 +1,15 @@
-import { stat } from 'node:fs/promises';
-
 import type { PoolClient } from 'pg';
 
 import type { CustomerSeed } from './types';
 import { insertMany } from './db';
+import { getSourceUpdatedAt } from './source-reader';
 import { cleanCell, inferYongsanArea, normalizeCustomerName, normalizeDigits, parseMoney } from './utils';
 import { getSheetRows, loadWorkbook } from './workbook';
 
-export async function loadCustomerSeeds(path: string): Promise<CustomerSeed[]> {
-  const [workbook, fileStat] = await Promise.all([
-    loadWorkbook({ kind: 'file', path }),
-    stat(path)
+export async function loadCustomerSeeds(source: string): Promise<CustomerSeed[]> {
+  const [workbook, sourceUpdatedAt] = await Promise.all([
+    loadWorkbook(toWorkbookLocation(source)),
+    getSourceUpdatedAt(source)
   ]);
   const [sheetName] = workbook.SheetNames;
 
@@ -47,7 +46,7 @@ export async function loadCustomerSeeds(path: string): Promise<CustomerSeed[]> {
       depositRequired: Boolean(depositNote),
       depositNote,
       creditLimit: parseMoney(row[6]),
-      sourceUpdatedAt: fileStat.mtime
+      sourceUpdatedAt
     });
   }
 
@@ -110,4 +109,16 @@ export async function upsertCustomers(client: PoolClient, seeds: CustomerSeed[])
       `
     }
   );
+}
+
+function toWorkbookLocation(source: string) {
+  return /^https?:\/\//i.test(source)
+    ? {
+        kind: 'url' as const,
+        url: source
+      }
+    : {
+        kind: 'file' as const,
+        path: source
+      };
 }

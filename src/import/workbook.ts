@@ -1,24 +1,17 @@
-import { readFile } from 'node:fs/promises';
-
 import * as XLSX from 'xlsx';
 
 import type { WorkbookLocation } from './vendor-config';
+import { readBinarySource } from './source-reader';
 
 export async function loadWorkbook(location: WorkbookLocation): Promise<XLSX.WorkBook> {
   if (location.kind === 'file') {
-    const buffer = await readFile(location.path);
+    const buffer = await readBinarySource(location.path);
     return XLSX.read(buffer, { type: 'buffer', raw: false, dense: true });
   }
 
-  const exportUrl = toGoogleSheetExportUrl(location.url);
-  const response = await fetch(exportUrl);
-
-  if (!response.ok) {
-    throw new Error(`Failed to download workbook: ${response.status} ${response.statusText}`);
-  }
-
-  const arrayBuffer = await response.arrayBuffer();
-  return XLSX.read(Buffer.from(arrayBuffer), { type: 'buffer', raw: false, dense: true });
+  const exportUrl = toWorkbookDownloadUrl(location.url);
+  const buffer = await readBinarySource(exportUrl);
+  return XLSX.read(buffer, { type: 'buffer', raw: false, dense: true });
 }
 
 export function getSheetRows(workbook: XLSX.WorkBook, sheetName: string): unknown[][] {
@@ -55,7 +48,11 @@ function columnToIndex(columnLetter: string): number {
   return columnToNumber(columnLetter) - 1;
 }
 
-function toGoogleSheetExportUrl(url: string): string {
+function toWorkbookDownloadUrl(url: string): string {
+  if (!url.includes('docs.google.com/spreadsheets')) {
+    return url;
+  }
+
   if (url.includes('/export?format=xlsx')) {
     return url;
   }
