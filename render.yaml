@@ -13,7 +13,7 @@ services:
     buildCommand: npm ci --include=dev && npm run build
     startCommand: NODE_ENV=production npm start
     healthCheckPath: /ready
-    autoDeploy: false
+    autoDeployTrigger: commit
     envVars:
       - key: PORT
         value: "10000"

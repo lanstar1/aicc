@@ -13,6 +13,7 @@
 - Build: `npm ci --include=dev && npm run build`
 - Start: `NODE_ENV=production npm start`
 - Health check: `GET /ready`
+- Auto deploy: `main` 브랜치 커밋 시 자동 배포
 - 기본 포트: `10000`
 - Node: `22.x`
 - `NODE_ENV=production`은 빌드 환경변수가 아니라 `startCommand`에서만 적용
@@ -37,6 +38,12 @@
 8. 가능하면 `TWILIO_AUTH_TOKEN`도 채워서 Twilio POST 웹훅 서명 검증을 켠다.
 9. 메일/SMS/알림톡을 실발송하려면 `NOTIFICATION_MOCK_MODE=false` 상태에서 관련 webhook/SMTP 값을 채운다.
 10. 배포 후 `npm run smoke:test -- --base-url https://<service>.onrender.com`으로 확인한다.
+
+## 자동 배포
+
+- 현재 [render.yaml](/Users/lanstar/Documents/New%20project/render.yaml)은 `autoDeployTrigger: commit`으로 설정되어 있다.
+- Blueprint sync 후부터는 `main` 브랜치에 push 되는 새 커밋이 `lanstar-aicc-api`에 자동 배포된다.
+- 이미 만들어진 서비스가 예전 수동 설정을 들고 있으면, Render Dashboard의 Web Service 설정에서도 Auto-Deploy가 `On Commit`인지 한 번 확인한다.
 
 ## Render Postgres 생성 방법
 
