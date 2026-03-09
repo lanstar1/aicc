@@ -42,7 +42,9 @@ export type ConversationStage =
   | 'resolved';
 export type NextAction =
   | 'confirm_customer'
+  | 'ask_customer'
   | 'ask_brand_or_product'
+  | 'ask_model'
   | 'clarify_product'
   | 'ask_quantity'
   | 'ask_delivery'
@@ -163,6 +165,8 @@ type ProductSelectionRow = {
 const explicitHandoffKeywords = ['사람', '상담원', '담당자', '직원', '연결'];
 const angerKeywords = ['화나', '짜증', '불만', '왜 이래', '환불', '클레임', '욕', '장난', '답답'];
 const techKeywords = [
+  '기술문의',
+  '기술 문의',
   '고장',
   '불량',
   '안되',
@@ -1234,6 +1238,10 @@ function decideNextAction(input: {
   }
 
   if (input.intent === 'order') {
+    if (!input.customerResolved && input.customerCandidatesCount === 0) {
+      return 'ask_customer';
+    }
+
     if (!input.customerResolved && input.customerCandidatesCount > 0) {
       return 'confirm_customer';
     }
@@ -1302,9 +1310,15 @@ function decideNextAction(input: {
   }
 
   if (input.intent === 'tech') {
-    return input.productCandidatesCount > 0 || input.productCodeResolved
-      ? 'provide_tech_guidance'
-      : 'ask_brand_or_product';
+    if (!input.productCodeResolved && input.productCandidatesCount === 0) {
+      return 'ask_model';
+    }
+
+    if (!input.productCodeResolved && input.productCandidatesCount >= 1) {
+      return 'clarify_product';
+    }
+
+    return 'provide_tech_guidance';
   }
 
   return 'clarify_intent';
@@ -1344,8 +1358,12 @@ function buildAssistantPrompt(input: {
       }
 
       return `${input.resolvedCustomerName ?? input.customerCandidates[0]?.customerName ?? '거래처명'} 맞으실까요? 아니시면 거래처명과 전화번호 뒷자리 네 자리를 다시 말씀해 주세요.`;
+    case 'ask_customer':
+      return '주문 도와드리겠습니다. 거래처명을 먼저 말씀해 주세요.';
     case 'ask_brand_or_product':
       return '모델명이 있으면 모델명을 먼저 말씀해 주세요. 없으면 제조사, 품명, 규격 중 한 가지부터 천천히 말씀해 주세요.';
+    case 'ask_model':
+      return '기술문의 도와드리겠습니다. LS로 시작하는 제품 모델명을 먼저 말씀해 주세요.';
     case 'clarify_product':
       if (input.productCandidates.length === 1) {
         const candidate = input.productCandidates[0];
@@ -1487,6 +1505,10 @@ function shouldIncreaseRepairCount(input: {
     return true;
   }
 
+  if (input.nextAction === 'ask_customer' && Boolean(input.state.lastCustomerNameHint)) {
+    return true;
+  }
+
   if (input.nextAction === 'clarify_product' && input.productCandidatesCount > 0) {
     return true;
   }
@@ -1505,8 +1527,10 @@ function shouldIncreaseRepairCount(input: {
 function mapNextActionToStage(nextAction: NextAction, intent: IntentType): ConversationStage {
   switch (nextAction) {
     case 'confirm_customer':
+    case 'ask_customer':
       return 'customer';
     case 'ask_brand_or_product':
+    case 'ask_model':
     case 'clarify_product':
       return 'product';
     case 'ask_quantity':

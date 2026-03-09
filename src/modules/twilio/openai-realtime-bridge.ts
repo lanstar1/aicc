@@ -307,6 +307,15 @@ export class OpenAiRealtimeBridge {
       callSessionId: this.callSessionId,
       digit: message.dtmf.digit
     });
+
+    if (message.dtmf.digit === '1') {
+      await this.applyMenuSelection('order');
+      return;
+    }
+
+    if (message.dtmf.digit === '2') {
+      await this.applyMenuSelection('tech');
+    }
   }
 
   private async handleStop(message: z.infer<typeof twilioStopSchema>) {
@@ -672,6 +681,37 @@ export class OpenAiRealtimeBridge {
       }
     });
     this.responseActive = true;
+  }
+
+  private async applyMenuSelection(intent: 'order' | 'tech') {
+    const conversationStage = intent === 'order' ? 'customer' : 'product';
+    const prompt =
+      intent === 'order'
+        ? '주문 도와드리겠습니다. 거래처명을 먼저 말씀해 주세요.'
+        : '기술문의 도와드리겠습니다. LS로 시작하는 제품 모델명을 먼저 말씀해 주세요.';
+
+    this.app.realtimeHub.patchState(this.callSessionId, {
+      intentType: intent,
+      conversationStage,
+      pendingConfirmation: null,
+      orderConfirmed: false
+    });
+
+    await this.app.db.query(
+      `
+        update aicc.call_session
+        set intent_type = $2::aicc.call_intent_t
+        where id = $1
+      `,
+      [this.callSessionId, intent]
+    );
+
+    await this.appendCallEvent('system', 'system', 'twilio.menu_selection', {
+      digit: intent === 'order' ? '1' : '2',
+      intent
+    });
+
+    await this.respondWithApprovedPrompt(prompt);
   }
 
   private async respondToAnalysis(
