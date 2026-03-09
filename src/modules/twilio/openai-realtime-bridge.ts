@@ -687,8 +687,8 @@ export class OpenAiRealtimeBridge {
     const conversationStage = intent === 'order' ? 'customer' : 'product';
     const prompt =
       intent === 'order'
-        ? '주문 도와드리겠습니다. 거래처명을 먼저 말씀해 주세요.'
-        : '기술문의 도와드리겠습니다. LS로 시작하는 제품 모델명을 먼저 말씀해 주세요.';
+        ? '안녕하세요 라인업시스템입니다. 주문 도와드리겠습니다. 거래처명을 먼저 말씀해 주세요.'
+        : '안녕하세요 라인업시스템입니다. 기술문의 도와드리겠습니다. LS로 시작하는 제품 모델명을 먼저 말씀해 주세요.';
 
     this.app.realtimeHub.patchState(this.callSessionId, {
       intentType: intent,

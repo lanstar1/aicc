@@ -1359,11 +1359,11 @@ function buildAssistantPrompt(input: {
 
       return `${input.resolvedCustomerName ?? input.customerCandidates[0]?.customerName ?? '거래처명'} 맞으실까요? 아니시면 거래처명과 전화번호 뒷자리 네 자리를 다시 말씀해 주세요.`;
     case 'ask_customer':
-      return '주문 도와드리겠습니다. 거래처명을 먼저 말씀해 주세요.';
+      return '안녕하세요 라인업시스템입니다. 주문 도와드리겠습니다. 거래처명을 먼저 말씀해 주세요.';
     case 'ask_brand_or_product':
       return '모델명이 있으면 모델명을 먼저 말씀해 주세요. 없으면 제조사, 품명, 규격 중 한 가지부터 천천히 말씀해 주세요.';
     case 'ask_model':
-      return '기술문의 도와드리겠습니다. LS로 시작하는 제품 모델명을 먼저 말씀해 주세요.';
+      return '안녕하세요 라인업시스템입니다. 기술문의 도와드리겠습니다. LS로 시작하는 제품 모델명을 먼저 말씀해 주세요.';
     case 'clarify_product':
       if (input.productCandidates.length === 1) {
         const candidate = input.productCandidates[0];
